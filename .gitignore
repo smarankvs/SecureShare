@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+
+# Production & Build outputs
+dist/
+build/
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Environment variables
+.env
+.env.local
+
+# IDE & OS
+.DS_Store
+.vscode/
+.idea/
