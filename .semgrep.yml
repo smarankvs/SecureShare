@@ -1,6 +1,6 @@
 rules:
   - id: python-hardcoded-secret
-    pattern-regex: '(?i)(password|secret|api_key|private_key)\s*=\s*["\'][a-zA-Z0-9_\-]{16,}["\']'
+    pattern-regex: '(?i)(password|secret|api_key|private_key)\s*=\s*["''][a-zA-Z0-9_\-]{16,}["'']'
     paths:
       include:
         - "app/**/*.py"
