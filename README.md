@@ -118,61 +118,127 @@ SecureShare/
 
 ---
 
-## 4. Getting Started
+## 4. How to Run the Project
 
-### Prerequisites
-- Python 3.12+ (or 3.11+)
-- Docker & Docker Compose (optional for containerized orchestration)
-- Azure Subscription (optional; local emulation supported via Azurite)
-
-### Local Quickstart
-
-1. **Clone the repository and install dependencies:**
-   ```bash
-   git clone https://github.com/Godsbleedop/SecureShare.git
-   cd SecureShare
-   pip install -r requirements.txt
-   ```
-
-2. **Configure Environment:**
-   Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Run Database Migrations (PostgreSQL):**
-   ```bash
-   alembic upgrade head
-   ```
-
-4. **Launch Application:**
-   ```bash
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-
-5. **Access Interactive Documentation:**
-   - Swagger UI: `http://localhost:8000/docs`
-   - ReDoc: `http://localhost:8000/redoc`
+### 4.1 Prerequisites
+Before starting, ensure you have the following installed:
+* **Python**: `3.11` or `3.12+`
+* **Node.js & npm**: `Node.js 18+` (required for React frontend)
+* **Git**: Installed and configured
+* **Docker & Docker Compose**: *(Optional)* Required if running PostgreSQL, Azurite, or ClamAV via containers
 
 ---
 
-## 5. Docker Compose Environment
+### 4.2 Method 1: Local Development (Recommended)
 
-Run the full production stack including PostgreSQL, Azure Blob Storage Emulator (Azurite), and ClamAV Antivirus Daemon with a single command:
-
+#### Step 1: Clone the Repository
 ```bash
-docker compose up --build -d
+git clone https://github.com/smarankvs/SecureShare.git
+cd SecureShare
 ```
 
-Services exposed:
-- **FastAPI Backend**: `http://localhost:8000`
-- **PostgreSQL Database**: `localhost:5432`
-- **Azurite Storage Emulator**: `localhost:10000`
-- **ClamAV Antivirus Daemon**: `localhost:3310`
+#### Step 2: Configure Environment Variables
+Copy the example configuration to `.env` (or customize as needed):
+```bash
+# On Linux / macOS / Git Bash:
+cp .env.example .env
+
+# On Windows PowerShell:
+Copy-Item .env.example .env
+```
+> [!IMPORTANT]
+> Ensure `SECRET_KEY` is set to a secure 64-character random string in `.env` (e.g. generated via `python -c "import secrets; print(secrets.token_hex(32))"`).
+
+#### Step 3: Setup and Start the Backend
+1. **Create and activate a virtual environment:**
+   ```bash
+   # Linux / macOS:
+   python3 -m venv .venv
+   source .venv/bin/activate
+
+   # Windows (PowerShell):
+   python -m venv .venv
+   # If you get an execution policy error, run: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+   .\.venv\Scripts\Activate.ps1
+
+   # Windows (Command Prompt):
+   .venv\Scripts\activate.bat
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   .venv\Scripts\activate.bat
+   ```
+
+3. **Initialize the Database:**
+   * If running local PostgreSQL:
+     ```bash
+     alembic upgrade head
+     ```
+   * *Note:* If PostgreSQL is not running, the application automatically falls back to an embedded SQLite database (`secureshare.db`) with zero manual setup required.
+
+4. **Launch the FastAPI Server:**
+   ```bash
+   # Using Uvicorn directly:
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+   # Or using the root runner:
+   python main.py
+   ```
+   The backend API will be live at `http://localhost:8000`.
+
+#### Step 4: Setup and Start the Frontend
+Open a separate terminal window:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+The React frontend web application will be live at `http://localhost:5173`.
 
 ---
 
-## 6. Azure Cloud Configuration
+### 4.3 Method 2: Full-Stack Containerized (Docker Compose)
+
+Run the backend, PostgreSQL database, Azure Blob Storage emulator (Azurite), and ClamAV antivirus daemon in isolated containers with a single command:
+
+```bash
+# Build and start all services in the background:
+docker compose up --build -d
+
+# View live service logs:
+docker compose logs -f api
+
+# Stop all services:
+docker compose down
+```
+
+---
+
+### 4.4 Service Endpoints & Verification
+
+Once running, access the following interactive endpoints in your browser:
+
+| Service | URL | Description |
+| :--- | :--- | :--- |
+| **Frontend Web App** | `http://localhost:5173` | React + Vite client dashboard |
+| **Backend REST API** | `http://localhost:8000` | FastAPI root endpoint |
+| **Swagger UI** | `http://localhost:8000/docs` | Interactive OpenAPI documentation & testing |
+| **ReDoc UI** | `http://localhost:8000/redoc` | Clean technical API specifications |
+| **Health Check** | `http://localhost:8000/health` | System status, database, & storage check |
+
+---
+
+### 4.5 Running Automated Tests
+
+Run the comprehensive integration and security test suite:
+```bash
+pytest -v
+```
+
+---
+
+## 5. Azure Cloud Configuration
 
 ### Azure Key Vault Setup
 To enable zero-trust cloud secret retrieval:
@@ -198,7 +264,7 @@ To enable zero-trust cloud secret retrieval:
 
 ---
 
-## 7. DevSecOps & Security Verification
+## 6. DevSecOps & Security Verification
 
 Run automated security scanners locally:
 
