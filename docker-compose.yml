@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # SecureShare FastAPI Backend Application
+  # ============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: secureshare_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=SecureShare
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - SECRET_KEY=c842b10a29ef8120348712390847120938471203948712093847102938471029
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=secureshare_user
+      - POSTGRES_PASSWORD=SecureShareP@ssw0rd123!
+      - POSTGRES_DB=secureshare_db
+      - DATABASE_URL=postgresql+psycopg2://secureshare_user:SecureShareP@ssw0rd123!@postgres:5432/secureshare_db
+      - AZURE_KEYVAULT_ENABLED=false
+      - AZURE_STORAGE_CONTAINER_NAME=secure-files
+      # Local Azurite connection string for testing Azure SDK locally
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      - AZURE_STORAGE_USE_LOCAL_FALLBACK=true
+      - CLAMAV_ENABLED=true
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+    depends_on:
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+      clamav:
+        condition: service_started
+    networks:
+      - secureshare_net
+    volumes:
+      - local_storage:/app/secure_storage_data
+
+  # ============================================================================
+  # PostgreSQL Database Service
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: secureshare_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: secureshare_user
+      POSTGRES_PASSWORD: SecureShareP@ssw0rd123!
+      POSTGRES_DB: secureshare_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - secureshare_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshare_user -d secureshare_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Azurite (Official Azure Storage Emulator)
+  # ============================================================================
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: secureshare_azurite
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+    command: "azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --loose"
+    networks:
+      - secureshare_net
+    volumes:
+      - azurite_data:/data
+
+  # ============================================================================
+  # ClamAV Antivirus Daemon
+  # ============================================================================
+  clamav:
+    image: clamav/clamav:latest
+    container_name: secureshare_clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    networks:
+      - secureshare_net
+
+volumes:
+  pgdata:
+    driver: local
+  azurite_data:
+    driver: local
+  local_storage:
+    driver: local
+
+networks:
+  secureshare_net:
+    driver: bridge
