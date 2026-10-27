@@ -191,10 +191,12 @@ Copy-Item .env.example .env
 Open a separate terminal window:
 ```bash
 cd frontend
+cp .env.example .env   # Configure VITE_ENTRA_CLIENT_ID and VITE_ENTRA_TENANT_ID
 npm install
 npm run dev
 ```
 The React frontend web application will be live at `http://localhost:5173`.
+Refer to [frontend/README.md](file:///Users/smarankv/Documents/GitHub/SecureShare/frontend/README.md) for detailed Microsoft Entra ID App Registration configuration.
 
 ---
 

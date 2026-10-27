@@ -1,23 +1,38 @@
-import './App.css'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthProvider.tsx';
+import { ProtectedRoute } from './components/ProtectedRoute.tsx';
+import { DashboardPage } from './pages/DashboardPage.tsx';
+import { LoginPage } from './pages/LoginPage.tsx';
+import { SharedFilePage } from './pages/SharedFilePage.tsx';
+import './App.css';
 
 function App() {
   return (
-    <main className="container">
-      <div className="card">
-        <div className="status-badge">Project Initialized</div>
-        <h1 className="title">SecureShare</h1>
-        <p className="description">
-          Secure Cloud-Based Document Sharing Platform with Access Control and Security Monitoring
-        </p>
-        <div className="tags">
-          <span className="tag">React</span>
-          <span className="tag">TypeScript</span>
-          <span className="tag">FastAPI</span>
-          <span className="tag">PostgreSQL</span>
-        </div>
-      </div>
-    </main>
-  )
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Authentication Route */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* Recipient Shared-File Route (Supports direct navigation for unauthenticated recipients) */}
+          <Route path="/share/:token" element={<SharedFilePage />} />
+
+          {/* Protected File Management Dashboard */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Catch-all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
 }
 
-export default App
+export default App;
