@@ -1,20 +1,11 @@
-from fastapi import FastAPI
+import sys
+import os
 
-app = FastAPI(
-    title="SecureShare API",
-    description="Secure Cloud-Based Document Sharing Platform API",
-    version="0.1.0"
-)
+# Add parent directory to sys.path to ensure module resolution
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-@app.get("/")
-def read_root():
-    return {
-        "message": "Welcome to SecureShare API",
-        "status": "online"
-    }
+from app.main import app
 
-@app.get("/health")
-def health_check():
-    return {
-        "status": "healthy"
-    }
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

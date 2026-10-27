@@ -1,0 +1,10 @@
+# Safety Policy Configuration
+security:
+  ignore_unpinned_requirements: false
+  continue_on_vulnerability_error: true
+  auto_remediate: false
+
+alert:
+  severity:
+    - critical
+    - high
