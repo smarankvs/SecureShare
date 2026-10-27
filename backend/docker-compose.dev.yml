@@ -1,0 +1,29 @@
+# Local development stack for the DB / storage / inspection module.
+#   docker compose -f backend/docker-compose.dev.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: secureshare
+      POSTGRES_PASSWORD: secureshare
+      POSTGRES_DB: secureshare
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshare"]
+      interval: 5s
+      retries: 10
+
+  clamav:
+    image: clamav/clamav:stable
+    ports: ["3310:3310"]
+    environment:
+      # Must be >= the 25 MB upload limit (clamd default is exactly 25M).
+      CLAMD_CONF_StreamMaxLength: "30M"
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      retries: 20
+
+volumes:
+  pgdata:
