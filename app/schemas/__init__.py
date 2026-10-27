@@ -20,6 +20,7 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: str
+    role: str = "user"
     is_active: bool
     created_at: datetime
 
@@ -30,6 +31,20 @@ class UserResponse(UserBase):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, description="Current existing password")
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        max_length=72,
+        description="New password meeting complexity requirements"
+    )
+
+
+class RoleUpdateRequest(BaseModel):
+    role: str = Field(..., description="Target role ('admin' or 'user')")
 
 
 class TokenResponse(BaseModel):
@@ -83,12 +98,16 @@ class FileListResponse(BaseModel):
 # Audit Log Schemas
 class AuditLogResponse(BaseModel):
     id: str
-    user_id: Optional[str]
+    user_id: Optional[str] = None
+    username: Optional[str] = None
     action: str
+    resource: Optional[str] = None
     timestamp: datetime
-    ip_address: Optional[str]
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    request_id: Optional[str] = None
     status: str
-    details: Optional[str]
+    details: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

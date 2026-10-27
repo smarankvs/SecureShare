@@ -1,4 +1,4 @@
-name: DevSecOps CI Pipeline
+name: Enterprise DevSecOps CI/CD Pipeline & Security Gate
 
 on:
   push:
@@ -12,7 +12,27 @@ permissions:
 
 jobs:
   # ============================================================================
-  # 1. Static Application Security Testing (SAST)
+  # 1. Automated Secret Detection (Gitleaks)
+  # ============================================================================
+  secret_detection:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Scanner
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+          GITLEAKS_ENABLE_SUMMARY: true
+          # Gate: Pipeline fails immediately if credentials or secrets are committed
+
+  # ============================================================================
+  # 2. Static Application Security Testing (SAST: Bandit & Semgrep)
   # ============================================================================
   sast_security_scan:
     name: SAST (Bandit & Semgrep)
@@ -29,18 +49,20 @@ jobs:
       - name: Install SAST Scanners
         run: |
           python -m pip install --upgrade pip
-          pip install bandit[toml] semgrep
+          pip install "bandit[toml]" semgrep
 
-      - name: Run Bandit AST Security Scan
+      - name: Run Bandit AST Security Scan (Security Gate: High Severity)
         run: |
-          bandit -c bandit.yaml -r app/ -ll -v
+          echo "Running Bandit AST scan with High severity threshold..."
+          bandit -c bandit.yaml -r app/ -ll --severity-level high -v
 
-      - name: Run Semgrep Rules Scan
+      - name: Run Semgrep SAST Scan (Security Gate: High Severity / ERROR)
         run: |
-          semgrep scan --config=.semgrep.yml --error app/
+          echo "Running Semgrep SAST scan with Error-level enforcement..."
+          semgrep scan --config=.semgrep.yml --error --severity ERROR app/
 
   # ============================================================================
-  # 2. Software Composition Analysis (SCA) & Dependency Vulnerability Scanning
+  # 3. Software Composition Analysis (SCA: pip-audit & Safety)
   # ============================================================================
   sca_dependency_scan:
     name: SCA (Safety & Pip-Audit)
@@ -61,17 +83,43 @@ jobs:
 
       - name: Scan Dependencies with Safety
         run: |
-          safety check -r requirements.txt --full-report || true
+          echo "Executing Safety dependency CVE audit..."
+          safety check -r requirements.txt --full-report
 
-      - name: Audit Packages with Pip-Audit
+      - name: Audit Vulnerabilities with Pip-Audit (Security Gate: Critical / Known CVEs)
         run: |
-          pip-audit -r requirements.txt || true
+          echo "Executing pip-audit scan on Python packages..."
+          pip-audit -r requirements.txt --desc on
 
   # ============================================================================
-  # 3. Automated Testing & Code Quality
+  # 4. Container & Artifact Security (Trivy Vulnerability Scanner)
   # ============================================================================
-  test_and_lint:
-    name: Unit & Security Tests
+  container_security_scan:
+    name: Container Vulnerability Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Container Image
+        run: |
+          docker build -t secureshare-api:${{ github.sha }} .
+
+      - name: Run Trivy Image Security Scan (Security Gate: CRITICAL)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: secureshare-api:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
+
+  # ============================================================================
+  # 5. Automated Unit, Integration & Security Tests with Coverage
+  # ============================================================================
+  test_and_coverage:
+    name: Pytest & Coverage
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
@@ -82,17 +130,48 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Application Dependencies
+      - name: Install Application & Test Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest-cov
 
-      - name: Execute Pytest Test Suite
+      - name: Execute Pytest Suite with Coverage Enforcement
         env:
           ENVIRONMENT: test
           SECRET_KEY: test_secret_key_minimum_32_characters_long_for_security_testing
-          DATABASE_URL: sqlite:///./test_secureshare.db
+          DATABASE_URL: sqlite:///:memory:
           AZURE_KEYVAULT_ENABLED: "false"
           AZURE_STORAGE_USE_LOCAL_FALLBACK: "true"
         run: |
-          pytest -v --tb=short tests/
+          pytest -v --tb=short --cov=app --cov-report=xml --cov-report=term tests/
+
+      - name: Upload Test Coverage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: coverage.xml
+
+  # ============================================================================
+  # 6. Enterprise DevSecOps Security Gate
+  # ============================================================================
+  security_gate:
+    name: Enterprise Security Gate
+    needs:
+      - secret_detection
+      - sast_security_scan
+      - sca_dependency_scan
+      - container_security_scan
+      - test_and_coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate Security Compliance
+        run: |
+          echo "=========================================================="
+          echo "✓ DevSecOps Quality & Security Gate: ALL CHECKS PASSED"
+          echo "• No hardcoded secrets detected (Gitleaks)"
+          echo "• No high-severity SAST vulnerabilities (Bandit & Semgrep)"
+          echo "• No critical SCA dependency vulnerabilities (pip-audit & Safety)"
+          echo "• No critical container OS/library CVEs (Trivy)"
+          echo "• Pytest test suite & code coverage passed"
+          echo "=========================================================="

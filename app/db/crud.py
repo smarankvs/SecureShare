@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.db.models import User, FileRecord, AuditLog, Share
 from app.schemas import UserCreate
+from app.utils.logger import log_audit_event
 
 logger = logging.getLogger("secureshare.crud")
 
@@ -86,6 +87,30 @@ def provision_entra_user(db: Session, entra_oid: str, email: str, name: str) -> 
     db.commit()
     db.refresh(user)
     logger.info("Provisioned Entra shadow user %s (%s)", user.id, email)
+    return user
+
+
+def update_user_role(db: Session, user_id: str, new_role: str) -> Optional[User]:
+    """Update role for a user (e.g., 'admin', 'user')."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    user.role = new_role.lower().strip()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user_password(db: Session, user_id: str, new_hashed_pwd: str) -> Optional[User]:
+    """Update password hash for a user."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    user.password_hash = new_hashed_pwd
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
 
 
@@ -171,21 +196,56 @@ def create_audit_log(
     db: Session,
     action: str,
     user_id: Optional[str] = None,
+    username: Optional[str] = None,
+    resource: Optional[str] = None,
     ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    request_id: Optional[str] = None,
     status: str = "SUCCESS",
     details: Optional[str] = None,
 ) -> AuditLog:
-    """Record a security audit log event."""
+    """
+    Record a security audit log event both in PostgreSQL database
+    and emit structured JSON log to stdout for Microsoft Sentinel ingestion.
+    """
+    # 1. Resolve username from user_id if not explicitly passed
+    if user_id and not username:
+        try:
+            user = get_user_by_id(db, user_id)
+            if user:
+                username = user.email
+        except Exception:
+            pass
+
+    # 2. Persist to PostgreSQL database
     log_entry = AuditLog(
         action=action,
         user_id=user_id,
+        username=username,
+        resource=resource,
         ip_address=ip_address,
+        user_agent=user_agent,
+        request_id=request_id,
         status=status,
         details=details,
     )
     db.add(log_entry)
     db.commit()
     db.refresh(log_entry)
+
+    # 3. Emit structured JSON audit log for SIEM (Microsoft Sentinel)
+    log_audit_event(
+        action=action,
+        user_id=user_id,
+        username=username,
+        resource=resource,
+        status=status,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        request_id=request_id,
+        details=details,
+    )
+
     return log_entry
 
 

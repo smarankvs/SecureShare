@@ -40,8 +40,9 @@ def verify_document_owner(
     if file_record.owner_id != user_id:
         crud.create_audit_log(
             db,
-            action=audit_action,
+            action=audit_action or "PERMISSION_DENIED",
             user_id=user_id,
+            resource=f"files/{file_id}",
             ip_address=ip_address,
             status="ALERT",
             details=f"User {user_id} attempted to access file {file_id} owned by {file_record.owner_id}",
@@ -97,8 +98,10 @@ def get_owned_share(
     if not (is_creator or is_file_owner):
         crud.create_audit_log(
             db,
-            action="UNAUTHORIZED_SHARE_ACCESS",
+            action="PERMISSION_DENIED",
             user_id=user.id,
+            username=user.email,
+            resource=f"shares/{share_id}",
             ip_address=ip_address,
             status="ALERT",
             details=f"User {user.id} attempted to administrate share {share_id}",

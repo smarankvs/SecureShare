@@ -20,6 +20,14 @@ logger = logging.getLogger("secureshare.upload_api")
 router = APIRouter(tags=["File Upload"])
 
 
+def _extract_request_context(request: Request):
+    return {
+        "ip_address": getattr(request.state, "client_ip", "unknown") or "unknown",
+        "user_agent": getattr(request.state, "user_agent", "unknown") or "unknown",
+        "request_id": getattr(request.state, "request_id", "unknown") or "unknown",
+    }
+
+
 @router.post(
     "/upload",
     response_model=FileUploadResponse,
@@ -38,7 +46,7 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    client_ip = getattr(request.state, "client_ip", "unknown")
+    ctx = _extract_request_context(request)
 
     if not file.filename:
         raise BadRequestException("Uploaded file must have a filename.")
@@ -55,7 +63,11 @@ async def upload_file(
                 db,
                 action="FILE_UPLOAD_REJECTED",
                 user_id=current_user.id,
-                ip_address=client_ip,
+                username=current_user.email,
+                resource=file.filename,
+                ip_address=ctx["ip_address"],
+                user_agent=ctx["user_agent"],
+                request_id=ctx["request_id"],
                 status="FAILED",
                 details=f"File '{file.filename}' exceeded 25MB limit ({total_size} bytes)."
             )
@@ -65,10 +77,6 @@ async def upload_file(
     raw_data = bytes(file_bytes)
 
     # 2. Strict Security Validation:
-    # - Filename sanitization
-    # - Extension validation (PDF, PNG, JPEG, DOCX)
-    # - Magic byte MIME verification
-    # - Unpredictable UUID filename generation
     try:
         sanitized_name, extension, validated_mime, uuid_blob_name, file_size = validate_and_prepare_file(
             filename=file.filename,
@@ -79,13 +87,17 @@ async def upload_file(
             db,
             action="FILE_UPLOAD_REJECTED",
             user_id=current_user.id,
-            ip_address=client_ip,
+            username=current_user.email,
+            resource=file.filename,
+            ip_address=ctx["ip_address"],
+            user_agent=ctx["user_agent"],
+            request_id=ctx["request_id"],
             status="FAILED",
             details=f"Validation failed for '{file.filename}': {str(exc)}"
         )
         raise
 
-    # 3. Antivirus & Malicious Signature Scan
+    # 3. Antivirus & Malicious Signature Scan (ClamAV)
     try:
         virus_scanner.assert_clean(raw_data)
     except Exception as exc:
@@ -93,7 +105,11 @@ async def upload_file(
             db,
             action="MALWARE_DETECTED",
             user_id=current_user.id,
-            ip_address=client_ip,
+            username=current_user.email,
+            resource=sanitized_name,
+            ip_address=ctx["ip_address"],
+            user_agent=ctx["user_agent"],
+            request_id=ctx["request_id"],
             status="ALERT",
             details=f"Malware detection triggered for '{file.filename}': {str(exc)}"
         )
@@ -124,7 +140,11 @@ async def upload_file(
             db,
             action="STORAGE_FAILURE",
             user_id=current_user.id,
-            ip_address=client_ip,
+            username=current_user.email,
+            resource=uuid_blob_name,
+            ip_address=ctx["ip_address"],
+            user_agent=ctx["user_agent"],
+            request_id=ctx["request_id"],
             status="ERROR",
             details=f"Storage failure for '{uuid_blob_name}': {str(exc)}"
         )
@@ -142,12 +162,16 @@ async def upload_file(
         sha256_hash=sha256_hash
     )
 
-    # 8. Record successful audit log
+    # 8. Record successful audit log (FILE_UPLOAD)
     crud.create_audit_log(
         db,
-        action="FILE_UPLOAD_SUCCESS",
+        action="FILE_UPLOAD",
         user_id=current_user.id,
-        ip_address=client_ip,
+        username=current_user.email,
+        resource=file_record.id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+        request_id=ctx["request_id"],
         status="SUCCESS",
         details=f"Uploaded '{sanitized_name}' as '{uuid_blob_name}' ({file_size} bytes)"
     )

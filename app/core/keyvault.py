@@ -1,6 +1,11 @@
+"""
+Centralized Secret Provider for SecureShare.
+Zero-Trust credential isolation using Azure Key Vault with automatic .env fallback.
+"""
 import logging
-from typing import Optional
-from app.core.config import Settings
+import os
+from typing import Dict, Optional
+from app.core.config import Settings, settings
 
 logger = logging.getLogger("secureshare.keyvault")
 
@@ -13,21 +18,24 @@ except ImportError:
     logger.warning("Azure SDK libraries (azure-identity, azure-keyvault-secrets) not installed.")
 
 
-class KeyVaultManager:
+class SecretProvider:
     """
-    Manages secret retrieval from Azure Key Vault with automatic fallback to environment variables.
-    Adheres to Cloud Security Zero-Trust & Least Privilege best practices.
+    Centralized secret provider supporting Azure Key Vault with automatic local .env fallback.
+    Implements the Singleton pattern, in-memory caching, and seamless secret hydration.
+    Supports JWT Secret, Storage Connection String, Database Password, ClamAV config,
+    and arbitrary future secrets.
     """
 
-    def __init__(self, settings: Settings):
-        self.settings = settings
+    def __init__(self, app_settings: Optional[Settings] = None):
+        self.settings: Settings = app_settings or settings
         self.client: Optional["SecretClient"] = None
+        self._cache: Dict[str, str] = {}
         self._initialize_client()
 
     def _initialize_client(self) -> None:
-        """Initialize Azure Key Vault SecretClient if configured and SDK is present."""
+        """Initialize Azure Key Vault SecretClient if enabled and SDK is present."""
         if not self.settings.AZURE_KEYVAULT_ENABLED or not self.settings.AZURE_KEYVAULT_URL:
-            logger.info("Azure Key Vault is not enabled. Relying on environment variables.")
+            logger.info("Azure Key Vault is disabled. SecretProvider will use environment variables.")
             return
 
         if not AZURE_SDK_AVAILABLE:
@@ -55,66 +63,124 @@ class KeyVaultManager:
                 vault_url=self.settings.AZURE_KEYVAULT_URL,
                 credential=credential
             )
-            logger.info(f"Connected to Azure Key Vault at {self.settings.AZURE_KEYVAULT_URL}")
+            logger.info("Connected successfully to Azure Key Vault at %s", self.settings.AZURE_KEYVAULT_URL)
         except Exception as exc:
-            logger.error(f"Failed to connect to Azure Key Vault: {exc}. Falling back to .env values.")
+            logger.error("Failed to connect to Azure Key Vault: %s. Falling back to .env values.", exc)
             self.client = None
 
     def get_secret(self, secret_name: str, fallback_value: Optional[str] = None) -> Optional[str]:
         """
-        Retrieve a secret by name from Azure Key Vault.
-        If unavailable, returns the fallback value from the environment.
+        Retrieve a secret by name with caching.
+        First checks in-memory cache, then queries Azure Key Vault.
+        If Key Vault is disabled, unavailable, or the secret does not exist,
+        falls back to OS environment variable or the provided fallback value.
         """
+        # Normalize secret name (Key Vault uses hyphens, env vars use underscores)
+        kv_name = secret_name.replace("_", "-")
+        env_name = secret_name.replace("-", "_").upper()
+
+        if kv_name in self._cache:
+            return self._cache[kv_name]
+
+        # 1. Attempt retrieval from Azure Key Vault
         if self.client:
             try:
-                # Key Vault names use hyphens instead of underscores
-                normalized_name = secret_name.replace("_", "-")
-                retrieved_secret = self.client.get_secret(normalized_name)
-                if retrieved_secret and retrieved_secret.value:
-                    logger.info(f"Successfully retrieved secret '{normalized_name}' from Azure Key Vault.")
-                    return retrieved_secret.value
+                retrieved = self.client.get_secret(kv_name)
+                if retrieved and retrieved.value:
+                    logger.info("Successfully retrieved secret '%s' from Azure Key Vault.", kv_name)
+                    self._cache[kv_name] = retrieved.value
+                    return retrieved.value
             except Exception as exc:
                 logger.warning(
-                    f"Could not retrieve secret '{secret_name}' from Key Vault ({exc}). "
-                    f"Falling back to local environment configuration."
+                    "Could not retrieve secret '%s' from Key Vault (%s). Falling back to environment.",
+                    kv_name,
+                    exc
                 )
+
+        # 2. Fall back to environment variable or provided fallback
+        env_val = os.getenv(env_name, fallback_value)
+        if env_val is not None:
+            self._cache[kv_name] = env_val
+            return env_val
 
         return fallback_value
 
+    def get_jwt_secret(self) -> str:
+        """Retrieve JWT Secret Key."""
+        val = self.get_secret("jwt-secret", self.settings.SECRET_KEY)
+        return val or self.settings.SECRET_KEY
+
+    def get_storage_connection_string(self) -> Optional[str]:
+        """Retrieve Azure Blob Storage Connection String."""
+        return self.get_secret("storage-connection-string", self.settings.AZURE_STORAGE_CONNECTION_STRING)
+
+    def get_database_password(self) -> str:
+        """Retrieve Database Password."""
+        val = self.get_secret("database-password", self.settings.POSTGRES_PASSWORD)
+        return val or self.settings.POSTGRES_PASSWORD
+
+    def get_clamav_config(self) -> Dict[str, str]:
+        """Retrieve ClamAV Antivirus Configuration."""
+        host = self.get_secret("clamav-host", self.settings.CLAMAV_HOST) or self.settings.CLAMAV_HOST
+        port = self.get_secret("clamav-port", str(self.settings.CLAMAV_PORT)) or str(self.settings.CLAMAV_PORT)
+        enabled = self.get_secret("clamav-enabled", str(self.settings.CLAMAV_ENABLED).lower())
+        return {
+            "host": host,
+            "port": port,
+            "enabled": enabled.lower() in ("true", "1", "yes") if enabled else False
+        }
+
     def inject_secrets(self) -> None:
         """
-        Fetch critical secrets from Key Vault and inject them into settings:
-        1. Storage Connection String
-        2. JWT Secret
-        3. Database Password
+        Fetch critical secrets from Key Vault (or fallbacks) and hydrate them
+        into application settings at startup:
+        - JWT Secret
+        - Storage Connection String
+        - Database Password & URL
+        - ClamAV Configuration
         """
-        # 1. Storage Connection String
-        storage_conn = self.get_secret(
-            "storage-connection-string",
-            self.settings.AZURE_STORAGE_CONNECTION_STRING
-        )
-        if storage_conn:
-            self.settings.AZURE_STORAGE_CONNECTION_STRING = storage_conn
-
-        # 2. JWT Secret
-        jwt_secret = self.get_secret(
-            "jwt-secret",
-            self.settings.SECRET_KEY
-        )
+        # 1. JWT Secret
+        jwt_secret = self.get_jwt_secret()
         if jwt_secret:
             self.settings.SECRET_KEY = jwt_secret
 
+        # 2. Storage Connection String
+        storage_conn = self.get_storage_connection_string()
+        if storage_conn:
+            self.settings.AZURE_STORAGE_CONNECTION_STRING = storage_conn
+
         # 3. Database Password
-        db_password = self.get_secret(
-            "database-password",
-            self.settings.POSTGRES_PASSWORD
-        )
-        if db_password:
-            self.settings.POSTGRES_PASSWORD = db_password
+        db_pwd = self.get_database_password()
+        if db_pwd:
+            self.settings.POSTGRES_PASSWORD = db_pwd
+
+        # 4. ClamAV Configuration
+        clamav_conf = self.get_clamav_config()
+        self.settings.CLAMAV_HOST = clamav_conf["host"]
+        try:
+            self.settings.CLAMAV_PORT = int(clamav_conf["port"])
+        except ValueError:
+            pass
+        self.settings.CLAMAV_ENABLED = bool(clamav_conf["enabled"])
+
+        logger.info("Application settings hydrated with centralized secret provider.")
 
 
-def init_keyvault_secrets(settings: Settings) -> KeyVaultManager:
+# Global Singleton Instance
+secret_provider = SecretProvider(settings)
+
+
+def get_secret_provider() -> SecretProvider:
+    """Dependency injection provider for FastAPI endpoints and services."""
+    return secret_provider
+
+
+# Backwards compatibility alias
+KeyVaultManager = SecretProvider
+
+
+def init_keyvault_secrets(app_settings: Settings) -> SecretProvider:
     """Helper function to load Azure Key Vault secrets into the application settings."""
-    kv_manager = KeyVaultManager(settings)
-    kv_manager.inject_secrets()
-    return kv_manager
+    provider = SecretProvider(app_settings)
+    provider.inject_secrets()
+    return provider

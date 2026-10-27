@@ -23,6 +23,7 @@ class User(Base):
     # Immutable Microsoft Entra ID Object ID (oid claim). Null for local-only users.
     entra_oid = Column(String(64), unique=True, index=True, nullable=True)
     auth_source = Column(String(20), default="local", nullable=False)
+    role = Column(String(20), default="user", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -140,9 +141,13 @@ class AuditLog(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    username = Column(String(255), nullable=True, index=True)
     action = Column(String(100), nullable=False, index=True)
+    resource = Column(String(255), nullable=True, index=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    request_id = Column(String(100), nullable=True, index=True)
     status = Column(String(20), default="SUCCESS", nullable=False)
     details = Column(Text, nullable=True)
 

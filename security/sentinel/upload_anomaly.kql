@@ -1,0 +1,32 @@
+// ==============================================================================
+// Microsoft Sentinel KQL Detection Rule: Abnormal Spike in File Uploads
+// Severity: Medium | Tactic: Initial Access / Impact (MITRE ATT&CK T1565)
+// Description: Detects a sudden high-volume spike of document uploads from a single
+// account or IP address exceeding normal operational thresholds.
+// ==============================================================================
+
+let timeframe = 10m;
+let uploadThreshold = 20;
+
+SecureShare_Audit_CL
+| where TimeGenerated >= ago(timeframe)
+| where action_s in ("FILE_UPLOAD", "FILE_UPLOAD_SUCCESS") and status_s == "SUCCESS"
+| extend UserEmail = tostring(username_s)
+| extend ClientIP = tostring(ip_address_s)
+| summarize 
+    UploadCount = count(),
+    UploadedResources = make_set(resource_s),
+    FirstUpload = min(TimeGenerated),
+    LastUpload = max(TimeGenerated)
+    by UserEmail, ClientIP
+| where UploadCount >= uploadThreshold
+| project 
+    FirstUpload,
+    LastUpload,
+    UserEmail,
+    ClientIP,
+    UploadCount,
+    UploadedResources,
+    Severity = "Medium",
+    AlertName = "Abnormal File Upload Spike Detected"
+| order by UploadCount desc

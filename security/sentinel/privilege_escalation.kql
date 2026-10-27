@@ -1,0 +1,26 @@
+// ==============================================================================
+// Microsoft Sentinel KQL Detection Rule: Privilege Escalation & Role Modification
+// Severity: High | Tactic: Privilege Escalation / Persistence (MITRE ATT&CK T1078, T1098)
+// Description: Detects unauthorized attempts to modify user roles, or legitimate role
+// promotions that require verification against change management records.
+// ==============================================================================
+
+SecureShare_Audit_CL
+| where TimeGenerated >= ago(24h)
+| where action_s in ("ROLE_CHANGE", "PERMISSION_DENIED")
+| where resource_s contains "role" or details_s contains "role" or action_s == "ROLE_CHANGE"
+| extend ActorEmail = tostring(username_s)
+| extend ClientIP = tostring(ip_address_s)
+| extend EventStatus = tostring(status_s)
+| extend EventDetails = tostring(details_s)
+| project 
+    TimeGenerated,
+    ActorEmail,
+    ClientIP,
+    Action = action_s,
+    EventStatus,
+    Resource = resource_s,
+    EventDetails,
+    Severity = iff(EventStatus == "ALERT", "High", "Medium"),
+    AlertName = iff(EventStatus == "ALERT", "Unauthorized Privilege Escalation Attempt Blocked", "Administrative User Role Change Event")
+| order by TimeGenerated desc

@@ -1,0 +1,33 @@
+// ==============================================================================
+// Microsoft Sentinel KQL Detection Rule: Brute Force & Credential Stuffing
+// Severity: High | Tactic: Credential Access (MITRE ATT&CK T1110)
+// Description: Detects multiple failed authentication attempts against SecureShare
+// from a single source IP address or targeting a single user account within 5 minutes.
+// ==============================================================================
+
+let threshold = 5;
+let timeframe = 5m;
+
+SecureShare_Audit_CL
+| where TimeGenerated >= ago(timeframe)
+| where action_s == "FAILED_LOGIN" or action_s == "LOGIN_FAILED" or status_s == "FAILED"
+| extend ClientIP = tostring(ip_address_s)
+| extend TargetUser = tostring(username_s)
+| summarize 
+    FailedAttempts = count(),
+    TargetUsers = make_set(TargetUser),
+    UserAgents = make_set(user_agent_s),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated)
+    by ClientIP
+| where FailedAttempts >= threshold
+| project 
+    FirstSeen,
+    LastSeen,
+    ClientIP,
+    FailedAttempts,
+    TargetUsers,
+    UserAgents,
+    Severity = "High",
+    AlertName = "Potential Brute Force / Credential Stuffing Attack"
+| order by FailedAttempts desc

@@ -23,6 +23,14 @@ logger = logging.getLogger("secureshare.files_api")
 router = APIRouter(prefix="/files", tags=["Files Management"])
 
 
+def _extract_request_context(request: Request):
+    return {
+        "ip_address": getattr(request.state, "client_ip", "unknown") or "unknown",
+        "user_agent": getattr(request.state, "user_agent", "unknown") or "unknown",
+        "request_id": getattr(request.state, "request_id", "unknown") or "unknown",
+    }
+
+
 @router.get(
     "",
     response_model=FileListResponse,
@@ -54,14 +62,14 @@ def get_file_details(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    client_ip = getattr(request.state, "client_ip", "unknown")
+    ctx = _extract_request_context(request)
 
     # Deny-by-default object-level authorization (IDOR/BOLA mitigation)
     file_record = authz.get_owned_file(
         db,
         file_id,
         current_user,
-        ip_address=client_ip,
+        ip_address=ctx["ip_address"],
         audit_action="UNAUTHORIZED_FILE_ACCESS",
     )
 
@@ -72,7 +80,11 @@ def get_file_details(
         db,
         action="FILE_METADATA_ACCESSED",
         user_id=current_user.id,
-        ip_address=client_ip,
+        username=current_user.email,
+        resource=f"files/{file_record.id}",
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+        request_id=ctx["request_id"],
         status="SUCCESS",
         details=f"Accessed metadata for {file_record.blob_name}"
     )
@@ -100,7 +112,7 @@ def download_file_stream(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    client_ip = getattr(request.state, "client_ip", "unknown")
+    ctx = _extract_request_context(request)
     resolved = crud.get_file_by_blob_name(db, blob_name)
 
     if not resolved:
@@ -110,7 +122,7 @@ def download_file_stream(
         db,
         resolved.id,
         current_user.id,
-        ip_address=client_ip,
+        ip_address=ctx["ip_address"],
         audit_action="UNAUTHORIZED_DOWNLOAD_ATTEMPT",
     )
 
@@ -119,11 +131,16 @@ def download_file_stream(
     except FileNotFoundError:
         raise NotFoundException("File content missing from storage backend.")
 
+    # Audit Log (FILE_DOWNLOAD)
     crud.create_audit_log(
         db,
-        action="FILE_DOWNLOADED",
+        action="FILE_DOWNLOAD",
         user_id=current_user.id,
-        ip_address=client_ip,
+        username=current_user.email,
+        resource=f"files/{file_record.id}",
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+        request_id=ctx["request_id"],
         status="SUCCESS",
         details=f"Downloaded {file_record.original_name} ({blob_name})"
     )
@@ -151,13 +168,13 @@ def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    client_ip = getattr(request.state, "client_ip", "unknown")
+    ctx = _extract_request_context(request)
 
     file_record = authz.get_owned_file(
         db,
         file_id,
         current_user,
-        ip_address=client_ip,
+        ip_address=ctx["ip_address"],
         audit_action="UNAUTHORIZED_DELETE_ATTEMPT",
     )
 
@@ -169,11 +186,16 @@ def delete_file(
     # Remove record from database
     crud.delete_file_record(db, file_id)
 
+    # Audit Log (FILE_DELETION)
     crud.create_audit_log(
         db,
-        action="FILE_DELETED",
+        action="FILE_DELETION",
         user_id=current_user.id,
-        ip_address=client_ip,
+        username=current_user.email,
+        resource=f"files/{file_id}",
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+        request_id=ctx["request_id"],
         status="SUCCESS",
         details=f"Deleted '{original_name}' (Blob: {blob_name}, StorageRemoved: {blob_deleted})"
     )

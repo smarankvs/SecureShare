@@ -1,0 +1,35 @@
+// ==============================================================================
+// Microsoft Sentinel KQL Detection Rule: Excessive File Downloads (Data Exfiltration)
+// Severity: High | Tactic: Exfiltration (MITRE ATT&CK T1020, T1048)
+// Description: Detects a rapid burst of file downloads from a single user or IP,
+// potentially signifying unauthorized bulk data exfiltration or compromised credentials.
+// ==============================================================================
+
+let timeframe = 5m;
+let downloadThreshold = 15;
+
+SecureShare_Audit_CL
+| where TimeGenerated >= ago(timeframe)
+| where action_s in ("FILE_DOWNLOAD", "FILE_DOWNLOADED") and status_s == "SUCCESS"
+| extend UserEmail = tostring(username_s)
+| extend ClientIP = tostring(ip_address_s)
+| extend ResourceAccessed = tostring(resource_s)
+| summarize 
+    DownloadCount = count(),
+    AccessedFiles = make_set(ResourceAccessed),
+    UserAgents = make_set(user_agent_s),
+    FirstDownload = min(TimeGenerated),
+    LastDownload = max(TimeGenerated)
+    by UserEmail, ClientIP
+| where DownloadCount >= downloadThreshold
+| project 
+    FirstDownload,
+    LastDownload,
+    UserEmail,
+    ClientIP,
+    DownloadCount,
+    AccessedFiles,
+    UserAgents,
+    Severity = "High",
+    AlertName = "Potential Mass Data Exfiltration Burst Detected"
+| order by DownloadCount desc

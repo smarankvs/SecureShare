@@ -1,0 +1,122 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspace": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Azure Log Analytics Workspace with Microsoft Sentinel enabled"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'secureshare-brute-force-detection')]",
+      "apiVersion": "2023-02-01-preview",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "SecureShare — High Rate of Failed Authentication Attempts (Brute Force)",
+        "description": "Detects 5 or more failed login attempts from a single IP address within 5 minutes.",
+        "severity": "High",
+        "enabled": true,
+        "query": "SecureShare_Audit_CL | where TimeGenerated >= ago(5m) | where action_s in ('FAILED_LOGIN', 'LOGIN_FAILED') | summarize FailedCount = count(), Targets = make_set(username_s) by ip_address_s | where FailedCount >= 5",
+        "queryFrequency": "PT5M",
+        "queryPeriod": "PT5M",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "tactics": ["CredentialAccess"],
+        "techniques": ["T1110"],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": true,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "Selected",
+            "groupByEntities": ["IP"]
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'secureshare-malware-detection')]",
+      "apiVersion": "2023-02-01-preview",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "SecureShare — ClamAV Antivirus Malware Detection",
+        "description": "Triggers an immediate Critical incident when malicious file signatures are detected during upload.",
+        "severity": "High",
+        "enabled": true,
+        "query": "SecureShare_Audit_CL | where TimeGenerated >= ago(10m) | where action_s == 'MALWARE_DETECTED' or status_s == 'ALERT'",
+        "queryFrequency": "PT5M",
+        "queryPeriod": "PT10M",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "tactics": ["Execution", "DefenseEvasion"],
+        "techniques": ["T1204"],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'secureshare-mass-exfiltration')]",
+      "apiVersion": "2023-02-01-preview",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "SecureShare — Suspected Mass Data Exfiltration Burst",
+        "description": "Detects 15 or more file downloads within 5 minutes from a single user or IP address.",
+        "severity": "Medium",
+        "enabled": true,
+        "query": "SecureShare_Audit_CL | where TimeGenerated >= ago(5m) | where action_s in ('FILE_DOWNLOAD', 'FILE_DOWNLOADED') and status_s == 'SUCCESS' | summarize Downloads = count() by username_s, ip_address_s | where Downloads >= 15",
+        "queryFrequency": "PT5M",
+        "queryPeriod": "PT5M",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "tactics": ["Exfiltration"],
+        "techniques": ["T1020", "T1048"],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": true,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT2H",
+            "matchingMethod": "Selected",
+            "groupByEntities": ["Account", "IP"]
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'secureshare-privilege-escalation')]",
+      "apiVersion": "2023-02-01-preview",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "SecureShare — Unauthorized Role Modification or Privilege Escalation",
+        "description": "Alerts when non-administrators attempt role modifications or when an administrative role change occurs.",
+        "severity": "High",
+        "enabled": true,
+        "query": "SecureShare_Audit_CL | where TimeGenerated >= ago(15m) | where action_s == 'ROLE_CHANGE' or (action_s == 'PERMISSION_DENIED' and resource_s contains 'role')",
+        "queryFrequency": "PT15M",
+        "queryPeriod": "PT15M",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "tactics": ["PrivilegeEscalation", "Persistence"],
+        "techniques": ["T1078", "T1098"],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false
+          }
+        }
+      }
+    }
+  ]
+}

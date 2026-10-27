@@ -1,0 +1,84 @@
+version: '3.8'
+
+# ==============================================================================
+# SecureShare Dynamic Application Security Testing (DAST) Compose Stack
+# Integrates official OWASP ZAP (Zed Attack Proxy) with SecureShare Backend
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # SecureShare API (Target Service)
+  # ----------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: secureshare_api_dast
+    restart: "no"
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=SecureShare
+      - ENVIRONMENT=test
+      - DEBUG=true
+      - SECRET_KEY=zap_test_secret_key_minimum_32_characters_for_dast_scanning!
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=secureshare_user
+      - POSTGRES_PASSWORD=SecureShareP@ssw0rd123!
+      - POSTGRES_DB=secureshare_db
+      - DATABASE_URL=postgresql+psycopg2://secureshare_user:SecureShareP@ssw0rd123!@postgres:5432/secureshare_db
+      - AZURE_KEYVAULT_ENABLED=false
+      - AZURE_STORAGE_CONTAINER_NAME=secure-files
+      - AZURE_STORAGE_USE_LOCAL_FALLBACK=true
+      - CLAMAV_ENABLED=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zap_net
+
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Database Service
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: secureshare_db_dast
+    restart: "no"
+    environment:
+      POSTGRES_USER: secureshare_user
+      POSTGRES_PASSWORD: SecureShareP@ssw0rd123!
+      POSTGRES_DB: secureshare_db
+    networks:
+      - zap_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshare_user -d secureshare_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # OWASP ZAP (Zed Attack Proxy) Scanner Container
+  # ----------------------------------------------------------------------------
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: secureshare_zap_scanner
+    restart: "no"
+    depends_on:
+      - api
+    volumes:
+      - ./reports/zap:/zap/wrk:rw
+    networks:
+      - zap_net
+    command: >
+      zap-baseline.py
+      -t http://api:8000
+      -g gen.conf
+      -r zap_baseline_report.html
+      -J zap_baseline_report.json
+      -w zap_baseline_report.md
+      -I
+
+networks:
+  zap_net:
+    driver: bridge
