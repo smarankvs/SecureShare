@@ -1,0 +1,3 @@
+"""
+SecureShare Services Package
+"""

@@ -1,0 +1,40 @@
+# ==============================================================================
+# SECURESHARE PRODUCTION BACKEND DEPENDENCIES
+# ==============================================================================
+
+# Core Web Framework & Server
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.28.0,<1.0.0
+python-multipart>=0.0.9
+
+# Data Validation & Serialization
+pydantic>=2.6.0,<3.0.0
+pydantic-settings>=2.2.0,<3.0.0
+email-validator>=2.1.0
+
+# Database & ORM
+SQLAlchemy>=2.0.28,<3.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.1
+
+# Security, Cryptography & JWT
+bcrypt>=4.1.2
+PyJWT>=2.8.0
+cryptography>=42.0.5
+
+# Azure Cloud SDKs
+azure-identity>=1.15.0
+azure-keyvault-secrets>=4.8.0
+azure-storage-blob>=12.19.0
+
+# Configuration & Utilities
+python-dotenv>=1.0.1
+requests>=2.31.0
+
+# DevSecOps & Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.5
+httpx>=0.27.0
+bandit>=1.7.8
+semgrep>=1.65.0
+safety>=3.1.0

@@ -1,0 +1,44 @@
+rules:
+  - id: python-hardcoded-secret
+    pattern-regex: '(?i)(password|secret|api_key|private_key)\s*=\s*["''][a-zA-Z0-9_\-]{16,}["'']'
+    paths:
+      include:
+        - "app/**/*.py"
+      exclude:
+        - "app/core/config.py"
+    message: "Potential hardcoded secret detected in application code. Store secrets in Azure Key Vault or environment variables."
+    languages: [python]
+    severity: ERROR
+
+  - id: python-sql-injection-raw-query
+    patterns:
+      - pattern-either:
+          - pattern: $DB.execute(f"...")
+          - pattern: $DB.execute("..." % ...)
+          - pattern: $DB.execute("...".format(...))
+    message: "Potential SQL injection vulnerability via unparameterized string formatting. Use parameterized queries or SQLAlchemy select/text with bind parameters."
+    languages: [python]
+    severity: ERROR
+
+  - id: insecure-hashing-md5-sha1
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+    message: "Insecure cryptographic hashing algorithm detected (MD5/SHA1). Use SHA-256 or bcrypt."
+    languages: [python]
+    severity: WARNING
+
+  - id: path-traversal-open
+    patterns:
+      - pattern: open($USER_INPUT, ...)
+      - pattern-not-inside: |
+          $SANITIZED = sanitize_filename(...)
+          ...
+          open(..., ...)
+    paths:
+      include:
+        - "app/api/**/*.py"
+    message: "Direct file open with unverified user input. Validate and sanitize filename first."
+    languages: [python]
+    severity: ERROR
