@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, files, upload, users
+from app.api import auth, files, shares, upload, users
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.keyvault import init_keyvault_secrets
@@ -98,6 +98,7 @@ app.include_router(upload.router)
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(upload.router, prefix=settings.API_V1_STR)
 app.include_router(files.router, prefix=settings.API_V1_STR)
+app.include_router(shares.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
 
 

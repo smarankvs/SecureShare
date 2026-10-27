@@ -31,6 +31,26 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Authentication Mode: "local" (app-issued HS256), "entra" (Microsoft Entra ID
+    # RS256 via JWKS) or "both" (dispatch per token shape). Defaults to "local" so
+    # that existing endpoints, tests and team-mates' flows keep working unchanged.
+    AUTH_MODE: str = "local"
+
+    # Microsoft Entra ID (OIDC) Configuration
+    ENTRA_TENANT_ID: Optional[str] = None
+    ENTRA_CLIENT_ID: Optional[str] = None  # API Application ID / audience
+    ENTRA_ISSUER: Optional[str] = None  # defaults to tenant v2.0 issuer
+    ENTRA_JWKS_URI: Optional[str] = None  # explicit override (e.g. for tests)
+    JWKS_CACHE_TTL_SECONDS: int = 86400
+    JWKS_REFRESH_COOLDOWN_SECONDS: int = 300
+    JWKS_HTTP_TIMEOUT_SECONDS: int = 5
+    JWT_LEEWAY_SECONDS: int = 60
+
+    # Sharing Policy Defaults (Member 2 module)
+    SHARE_SAS_EXPIRY_MINUTES: int = 5  # short-lived SAS issued by Member 3's service
+    SHARE_MAX_DOWNLOADS_CAP: int = 100
+    SHARE_MAX_EXPIRY_DAYS: int = 90
+
     # Database Configuration (PostgreSQL)
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
@@ -100,6 +120,26 @@ class Settings(BaseSettings):
         if self.POSTGRES_SSLMODE:
             url += f"?sslmode={self.POSTGRES_SSLMODE}"
         return url
+
+    def get_entra_issuer(self) -> Optional[str]:
+        """Resolve the expected token issuer for the configured Entra tenant."""
+        if self.ENTRA_ISSUER:
+            return self.ENTRA_ISSUER
+        if self.ENTRA_TENANT_ID:
+            return f"https://login.microsoftonline.com/{self.ENTRA_TENANT_ID}/v2.0"
+        return None
+
+    def get_entra_jwks_uri(self) -> Optional[str]:
+        """Resolve the JWKS endpoint used to fetch signing keys."""
+        if self.ENTRA_JWKS_URI:
+            return self.ENTRA_JWKS_URI
+        if self.ENTRA_TENANT_ID:
+            return (
+                f"https://login.microsoftonline.com/{self.ENTRA_TENANT_ID}"
+                "/discovery/v2.0/keys"
+            )
+        return None
+
 
 
 settings = Settings()

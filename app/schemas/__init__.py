@@ -96,3 +96,16 @@ class AuditLogResponse(BaseModel):
 # Standard API Response wrapper
 class MessageResponse(BaseModel):
     message: str
+
+
+# Sharing schemas (Member 2: Authorization & Sharing Logic)
+from app.schemas.shares import (  # noqa: E402,F401
+    ShareCreate,
+    ShareCreatedResponse,
+    ShareDownloadRequest,
+    ShareDownloadResponse,
+    ShareListResponse,
+    ShareResponse,
+    ShareRevokeResponse,
+)
+

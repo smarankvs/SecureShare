@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
+from app.core.entra import verify_entra_token
 from app.core.exceptions import UnauthorizedException
 from app.core.security import decode_token
 from app.db.database import get_db
@@ -18,18 +19,59 @@ logger = logging.getLogger("secureshare.auth")
 security_scheme = HTTPBearer(auto_error=False)
 
 
+def _token_algorithm(token: str) -> Optional[str]:
+    """Best-effort unverified header read used only to pick a verifier."""
+    try:
+        return jwt.get_unverified_header(token).get("alg")
+    except jwt.PyJWTError:
+        return None
+
+
+def _authenticate_entra(token: str, db: Session) -> User:
+    """
+    Verify an Entra ID token and resolve (or provision) the shadow user.
+
+    Identity is keyed on the immutable `oid` claim; the email is only used for
+    display and recipient matching.
+    """
+    claims = verify_entra_token(token)
+    user = crud.provision_entra_user(
+        db,
+        entra_oid=claims.oid,
+        email=claims.email,
+        name=claims.name,
+    )
+    if not user.is_active:
+        raise UnauthorizedException("User account is disabled.")
+    return user
+
+
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     """
     FastAPI dependency to extract and validate the JWT Bearer access token.
-    Enforces expiration check, signature validation, and active user verification.
+
+    Supports two identity sources, selected by `AUTH_MODE`:
+      - "local": app-issued HS256 tokens (registration/login endpoints)
+      - "entra": Microsoft Entra ID RS256 tokens verified against tenant JWKS
+      - "both":  dispatch per token shape, so both flows coexist during migration
+
+    Enforces signature, issuer, audience, expiry and active-user checks.
     """
     if not credentials:
         raise UnauthorizedException("Authentication token is missing.")
 
     token = credentials.credentials
+    mode = (settings.AUTH_MODE or "local").lower()
+
+    if mode == "entra":
+        return _authenticate_entra(token, db)
+
+    if mode == "both" and _token_algorithm(token) == "RS256":
+        return _authenticate_entra(token, db)
+
     try:
         payload = decode_token(token)
     except jwt.ExpiredSignatureError:
@@ -54,6 +96,7 @@ def get_current_user(
         raise UnauthorizedException("User account is disabled.")
 
     return user
+
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
