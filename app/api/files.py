@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import ForbiddenException, NotFoundException
+from app.core import authz
+from app.core.exceptions import NotFoundException
 from app.db import crud
 from app.db.database import get_db
 from app.db.models import User
@@ -54,22 +55,15 @@ def get_file_details(
     db: Session = Depends(get_db)
 ):
     client_ip = getattr(request.state, "client_ip", "unknown")
-    file_record = crud.get_file_by_id(db, file_id)
 
-    if not file_record:
-        raise NotFoundException(f"File with ID '{file_id}' not found.")
-
-    # Enforce Object-Level Access Control (IDOR mitigation)
-    if file_record.owner_id != current_user.id:
-        crud.create_audit_log(
-            db,
-            action="UNAUTHORIZED_FILE_ACCESS",
-            user_id=current_user.id,
-            ip_address=client_ip,
-            status="WARNING",
-            details=f"Unauthorized access attempt to file {file_id}"
-        )
-        raise ForbiddenException("You do not have permission to access this file.")
+    # Deny-by-default object-level authorization (IDOR/BOLA mitigation)
+    file_record = authz.get_owned_file(
+        db,
+        file_id,
+        current_user,
+        ip_address=client_ip,
+        audit_action="UNAUTHORIZED_FILE_ACCESS",
+    )
 
     # Generate short-lived SAS download URL (15 minutes expiry)
     download_url = blob_service.generate_download_url(file_record.blob_name, expiry_minutes=15)
@@ -107,21 +101,18 @@ def download_file_stream(
     db: Session = Depends(get_db)
 ):
     client_ip = getattr(request.state, "client_ip", "unknown")
-    file_record = crud.get_file_by_blob_name(db, blob_name)
+    resolved = crud.get_file_by_blob_name(db, blob_name)
 
-    if not file_record:
+    if not resolved:
         raise NotFoundException("Requested file does not exist.")
 
-    if file_record.owner_id != current_user.id:
-        crud.create_audit_log(
-            db,
-            action="UNAUTHORIZED_DOWNLOAD_ATTEMPT",
-            user_id=current_user.id,
-            ip_address=client_ip,
-            status="ALERT",
-            details=f"Attempted to download unowned blob {blob_name}"
-        )
-        raise ForbiddenException("Access denied.")
+    file_record = authz.verify_document_owner(
+        db,
+        resolved.id,
+        current_user.id,
+        ip_address=client_ip,
+        audit_action="UNAUTHORIZED_DOWNLOAD_ATTEMPT",
+    )
 
     try:
         content_bytes, content_type = blob_service.download_file(blob_name)
@@ -161,21 +152,14 @@ def delete_file(
     db: Session = Depends(get_db)
 ):
     client_ip = getattr(request.state, "client_ip", "unknown")
-    file_record = crud.get_file_by_id(db, file_id)
 
-    if not file_record:
-        raise NotFoundException("File not found.")
-
-    if file_record.owner_id != current_user.id:
-        crud.create_audit_log(
-            db,
-            action="UNAUTHORIZED_DELETE_ATTEMPT",
-            user_id=current_user.id,
-            ip_address=client_ip,
-            status="ALERT",
-            details=f"Attempted to delete unowned file {file_id}"
-        )
-        raise ForbiddenException("You cannot delete files you do not own.")
+    file_record = authz.get_owned_file(
+        db,
+        file_id,
+        current_user,
+        ip_address=client_ip,
+        audit_action="UNAUTHORIZED_DELETE_ATTEMPT",
+    )
 
     # Remove blob from storage
     blob_deleted = blob_service.delete_file(file_record.blob_name)
