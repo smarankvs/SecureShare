@@ -1,21 +1,23 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { downloadSharedFile, triggerFileDownload } from '../api/apiClient.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import {
   CheckIcon,
   DownloadIcon,
   FileIcon,
-  MicrosoftIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
+  UserIcon,
 } from '../components/Icons.tsx';
 import { Navbar } from '../components/Navbar.tsx';
 import type { ShareDownloadResponse } from '../types/index.ts';
 
 export function SharedFilePage() {
   const { token } = useParams<{ token: string }>();
-  const { isAuthenticated, user, login, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuth();
 
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadSuccess, setDownloadSuccess] = useState<ShareDownloadResponse | null>(null);
@@ -23,9 +25,9 @@ export function SharedFilePage() {
 
   const isValidToken = Boolean(token && token.trim().length >= 16);
 
-  const handleSignIn = async () => {
-    // Preserve current URL (/share/:token) so user returns here after Entra ID login
-    await login(window.location.pathname);
+  const handleSignIn = () => {
+    // Preserve current URL (/share/:token) so user returns here after login
+    navigate('/login', { state: { from: location } });
   };
 
   const handleDownload = async () => {
@@ -100,7 +102,7 @@ export function SharedFilePage() {
                     <span className="notice-title">Zero-Trust Access Control Enforced</span>
                     <p className="notice-body">
                       This link requires recipient identity verification. Access is only granted if
-                      your authenticated Microsoft Entra ID email matches the designated recipient.
+                      your authenticated SecureShare account email matches the designated recipient.
                     </p>
                   </div>
                 </div>
@@ -145,12 +147,12 @@ export function SharedFilePage() {
                 ) : !isAuthenticated ? (
                   <div className="auth-required-box">
                     <p className="auth-prompt-text">
-                      Please sign in with your authorized Microsoft Entra ID account to verify your
+                      Please sign in with your authorized SecureShare account to verify your
                       recipient identity and unlock the download.
                     </p>
                     <button
                       type="button"
-                      className="btn btn-entra w-full"
+                      className="btn btn-primary w-full"
                       onClick={handleSignIn}
                       disabled={authLoading}
                     >
@@ -161,7 +163,7 @@ export function SharedFilePage() {
                         </>
                       ) : (
                         <>
-                          <MicrosoftIcon size={20} />
+                          <UserIcon size={20} />
                           <span>Sign in to Unlock Document</span>
                         </>
                       )}

@@ -1,24 +1,22 @@
 import { createContext } from 'react';
-import type { AccountInfo } from '@azure/msal-browser';
 
 export interface AuthUser {
+  id?: string;
   name: string;
   email: string;
-  username: string;
-  oid?: string;
-  homeAccountId?: string;
+  username?: string;
+  role?: string;
 }
 
 export interface AuthContextType {
   isAuthenticated: boolean;
   user: AuthUser | null;
-  account: AccountInfo | null;
   isLoading: boolean;
   error: string | null;
-  isEntraConfigured: boolean;
-  login: (redirectPath?: string) => Promise<void>;
+  login: (email: string, password: string, redirectPath?: string) => Promise<void>;
+  register: (name: string, email: string, password: string, redirectPath?: string) => Promise<void>;
   logout: () => Promise<void>;
-  getAccessToken: () => Promise<string | null>;
+  getAccessToken: () => string | null;
   clearError: () => void;
 }
 

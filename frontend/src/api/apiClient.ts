@@ -3,21 +3,51 @@ import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from 'axios';
-import { InteractionRequiredAuthError } from '@azure/msal-browser';
-import { API_BASE_URL, tokenRequest } from '../auth/authConfig.ts';
-import { msalInstance } from '../auth/msalInstance.ts';
+import { API_BASE_URL } from '../auth/authConfig.ts';
 import type {
   ApiErrorResponse,
   FileDetailResponse,
   FileListResponse,
   FileUploadResponse,
+  LoginRequest,
+  RegisterRequest,
   ShareCreateRequest,
   ShareCreatedResponse,
   ShareDownloadResponse,
   ShareListResponse,
   ShareRevokeResponse,
+  TokenResponse,
   UserProfile,
+  UserResponse,
 } from '../types/index.ts';
+
+const TOKEN_STORAGE_KEY = 'secureshare_access_token';
+
+/**
+ * Retrieve the current session JWT access token from tab sessionStorage.
+ */
+export function getStoredAccessToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist or clear the session JWT access token.
+ */
+export function setStoredAccessToken(token: string | null): void {
+  try {
+    if (token) {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch (e) {
+    console.error('Failed to update session token', e);
+  }
+}
 
 /**
  * Custom application API error wrapping backend error payloads.
@@ -65,11 +95,10 @@ export const apiClient: AxiosInstance = axios.create({
 
 /**
  * Bearer Token Request Interceptor.
- * Silently acquires the Microsoft Entra access token for the active account.
+ * Attaches local JWT access token from session storage to trusted requests.
  */
 apiClient.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    // Only attach bearer token to trusted backend endpoints
+  (config: InternalAxiosRequestConfig) => {
     const fullUrl = config.url?.startsWith('http')
       ? config.url
       : `${config.baseURL || ''}${config.url || ''}`;
@@ -78,27 +107,9 @@ apiClient.interceptors.request.use(
       return config;
     }
 
-    try {
-      const activeAccount =
-        msalInstance.getActiveAccount() ||
-        (msalInstance.getAllAccounts().length > 0 ? msalInstance.getAllAccounts()[0] : null);
-
-      if (activeAccount) {
-        const tokenResponse = await msalInstance.acquireTokenSilent({
-          ...tokenRequest,
-          account: activeAccount,
-        });
-
-        if (tokenResponse?.accessToken) {
-          config.headers.set('Authorization', `Bearer ${tokenResponse.accessToken}`);
-        }
-      }
-    } catch (error) {
-      if (error instanceof InteractionRequiredAuthError) {
-        console.warn('[SecureShare API] Silent token acquisition failed: interaction required');
-      } else {
-        console.warn('[SecureShare API] Token acquisition failed:', error);
-      }
+    const token = getStoredAccessToken();
+    if (token) {
+      config.headers.set('Authorization', `Bearer ${token}`);
     }
 
     return config;
@@ -223,6 +234,38 @@ apiClient.interceptors.response.use(
 // ==============================================================================
 // Typed API Methods
 // ==============================================================================
+
+/**
+ * Authenticate with email and password and receive JWT tokens.
+ */
+export async function loginUser(payload: LoginRequest): Promise<TokenResponse> {
+  const response = await apiClient.post<TokenResponse>('/api/v1/auth/login', payload);
+  if (response.data.access_token) {
+    setStoredAccessToken(response.data.access_token);
+  }
+  return response.data;
+}
+
+/**
+ * Register a new user account with email and password.
+ */
+export async function registerUser(payload: RegisterRequest): Promise<UserResponse> {
+  const response = await apiClient.post<UserResponse>('/api/v1/auth/register', payload);
+  return response.data;
+}
+
+/**
+ * Terminate user session.
+ */
+export async function logoutUser(): Promise<void> {
+  try {
+    await apiClient.post('/api/v1/auth/logout');
+  } catch {
+    // Best-effort logout notification
+  } finally {
+    setStoredAccessToken(null);
+  }
+}
 
 /**
  * Fetch current user profile.

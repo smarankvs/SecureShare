@@ -29,16 +29,12 @@ export function Navbar() {
                   {user.email}
                 </span>
               </div>
-              <span className="entra-badge" title="Authenticated via Microsoft Entra ID">
-                Entra ID
-              </span>
             </div>
-
             <button
               type="button"
               className="btn btn-secondary btn-sm logout-btn"
               onClick={() => logout()}
-              title="Sign out of Microsoft Entra ID"
+              title="Sign out of SecureShare"
             >
               <LogOutIcon size={16} />
               <span>Sign Out</span>

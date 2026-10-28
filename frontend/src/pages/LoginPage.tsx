@@ -1,18 +1,24 @@
-import { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import {
-  MicrosoftIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
   ShieldIcon,
   UploadCloudIcon,
+  UserIcon,
 } from '../components/Icons.tsx';
 
 export function LoginPage() {
-  const { isAuthenticated, login, isLoading, error, clearError, isEntraConfigured } = useAuth();
+  const { isAuthenticated, login, register, isLoading, error, clearError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // If already authenticated, redirect to destination or dashboard
   useEffect(() => {
@@ -26,14 +32,48 @@ export function LoginPage() {
     }
   }, [isAuthenticated, navigate, location]);
 
-  const handleLoginClick = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     clearError();
+    setValidationError(null);
+
     const state = location.state as { from?: { pathname: string; search: string } } | undefined;
     const targetPath = state?.from
       ? `${state.from.pathname}${state.from.search}`
       : sessionStorage.getItem('secureshare_intended_path') || '/';
 
-    await login(targetPath);
+    if (!email.trim() || !password) {
+      setValidationError('Please provide both email and password.');
+      return;
+    }
+
+    if (mode === 'register') {
+      if (!name.trim()) {
+        setValidationError('Please provide your full name.');
+        return;
+      }
+      if (password.length < 8) {
+        setValidationError('Password must be at least 8 characters long.');
+        return;
+      }
+      try {
+        await register(name.trim(), email.trim().toLowerCase(), password, targetPath);
+      } catch {
+        // Error state handled by AuthContext
+      }
+    } else {
+      try {
+        await login(email.trim().toLowerCase(), password, targetPath);
+      } catch {
+        // Error state handled by AuthContext
+      }
+    }
+  };
+
+  const handleTabSwitch = (newMode: 'login' | 'register') => {
+    clearError();
+    setValidationError(null);
+    setMode(newMode);
   };
 
   return (
@@ -50,50 +90,139 @@ export function LoginPage() {
             </p>
           </div>
 
-          {!isEntraConfigured && (
-            <div className="alert alert-warning">
-              <ShieldAlertIcon size={20} />
-              <div>
-                <strong>Entra ID Configuration Required</strong>
-                <p className="alert-sub">
-                  Copy <code>frontend/.env.example</code> to <code>frontend/.env</code> and provide your{' '}
-                  <code>VITE_ENTRA_CLIENT_ID</code> and <code>VITE_ENTRA_TENANT_ID</code> to enable live
-                  authentication.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="alert alert-error" role="alert">
-              <ShieldAlertIcon size={20} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="login-action-box">
+          {/* Mode Switcher Tabs */}
+          <div
+            style={{
+              display: 'flex',
+              background: 'var(--bg-base)',
+              padding: '4px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+              marginBottom: '1.5rem',
+            }}
+          >
             <button
               type="button"
-              className="btn btn-entra"
-              onClick={handleLoginClick}
+              onClick={() => handleTabSwitch('login')}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                background: mode === 'login' ? 'var(--primary)' : 'transparent',
+                color: mode === 'login' ? '#ffffff' : 'var(--text-secondary)',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'all var(--transition-fast)',
+              }}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabSwitch('register')}
+              style={{
+                flex: 1,
+                padding: '0.5rem 1rem',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                background: mode === 'register' ? 'var(--primary)' : 'transparent',
+                color: mode === 'register' ? '#ffffff' : 'var(--text-secondary)',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'all var(--transition-fast)',
+              }}
+            >
+              Create Account
+            </button>
+          </div>
+
+          {(validationError || error) && (
+            <div className="alert alert-error" role="alert">
+              <ShieldAlertIcon size={20} />
+              <span>{validationError || error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ textAlign: 'left', marginBottom: '1.75rem' }}>
+            {mode === 'register' && (
+              <div className="form-group">
+                <label className="form-label" htmlFor="user-name">
+                  Full Name
+                </label>
+                <input
+                  id="user-name"
+                  type="text"
+                  className="input"
+                  placeholder="e.g. Alice Cyber"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={isLoading}
+                  required
+                />
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="user-email">
+                Email Address
+              </label>
+              <input
+                id="user-email"
+                type="email"
+                className="input"
+                placeholder="name@organization.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
+                required
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="user-password">
+                Password
+              </label>
+              <input
+                id="user-password"
+                type="password"
+                className="input"
+                placeholder="••••••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+                required
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              />
+              {mode === 'register' && (
+                <span className="form-hint" style={{ marginTop: '0.25rem', display: 'block' }}>
+                  Min 8 chars with uppercase, lowercase, digit, & special character (@$!%*?&#^_-).
+                </span>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem 1rem' }}
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
                   <span className="btn-spinner" />
-                  <span>Connecting to Microsoft Identity...</span>
+                  <span>{mode === 'login' ? 'Authenticating...' : 'Creating Account...'}</span>
                 </>
               ) : (
                 <>
-                  <MicrosoftIcon size={20} />
-                  <span>Sign in with Microsoft Entra ID</span>
+                  <UserIcon size={18} />
+                  <span>{mode === 'login' ? 'Sign In to SecureShare' : 'Create Secure Account'}</span>
                 </>
               )}
             </button>
-            <p className="entra-hint">
-              Work or school accounts authenticated directly against Azure AD tenant JWKS
-            </p>
-          </div>
+          </form>
 
           <div className="security-pillars-grid">
             <div className="pillar-item">
@@ -101,7 +230,7 @@ export function LoginPage() {
               <div>
                 <span className="pillar-title">Zero-Trust Cloud</span>
                 <p className="pillar-desc">
-                  RS256 JWT tokens verified via tenant JWKS with immutable OID binding
+                  Argon2id credential derivation & AES-256-GCM envelope encryption
                 </p>
               </div>
             </div>

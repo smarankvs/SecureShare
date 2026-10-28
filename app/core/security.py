@@ -3,10 +3,20 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Union
 import bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHash
 import jwt
 
 from app.core.config import settings
 
+# Initialize Argon2id password hasher (RFC 9106 recommended parameters)
+_password_hasher = PasswordHasher(
+    time_cost=3,
+    memory_cost=65536,
+    parallelism=4,
+    hash_len=32,
+    salt_len=16
+)
 
 # Password complexity policy
 PASSWORD_REGEX = re.compile(
@@ -17,7 +27,7 @@ PASSWORD_REGEX = re.compile(
 def validate_password_strength(password: str) -> bool:
     """
     Validate that password meets enterprise cybersecurity guidelines:
-    - Between 8 and 72 characters (bcrypt hard limit is 72 bytes)
+    - Between 8 and 72 characters
     - At least one uppercase letter
     - At least one lowercase letter
     - At least one digit
@@ -28,24 +38,27 @@ def validate_password_strength(password: str) -> bool:
 
 def hash_password(password: str) -> str:
     """
-    Hash a plain password using bcrypt with work factor salt (rounds=12).
+    Hash a plain password using Argon2id with cryptographically secure salt.
     """
-    pwd_bytes = password.encode("utf-8")
-    salt = bcrypt.gensalt(rounds=12)
-    hashed = bcrypt.hashpw(pwd_bytes, salt)
-    return hashed.decode("utf-8")
+    return _password_hasher.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Verify a plain password against the stored bcrypt hash using constant-time comparison.
+    Verify a plain password against the stored Argon2id hash (with legacy bcrypt fallback).
     """
+    if not hashed_password or not plain_password:
+        return False
     try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
-            hashed_password.encode("utf-8")
-        )
-    except Exception:
+        if hashed_password.startswith("$argon2"):
+            return _password_hasher.verify(hashed_password, plain_password)
+        elif hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
+            return bcrypt.checkpw(
+                plain_password.encode("utf-8"),
+                hashed_password.encode("utf-8")
+            )
+        return False
+    except (VerifyMismatchError, VerificationError, InvalidHash, Exception):
         return False
 
 

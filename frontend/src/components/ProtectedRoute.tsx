@@ -12,7 +12,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      // Save attempted destination path to sessionStorage so MSAL redirects back here
+      // Save attempted destination path to sessionStorage so user redirects back after login
       const fullPath = location.pathname + location.search;
       if (fullPath !== '/login') {
         sessionStorage.setItem('secureshare_intended_path', fullPath);
@@ -24,7 +24,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return (
       <div className="auth-loading-screen">
         <div className="loading-spinner-ring" />
-        <p className="loading-text">Verifying Entra ID Session...</p>
+        <p className="loading-text">Verifying Secure Session...</p>
       </div>
     );
   }

@@ -15,7 +15,7 @@ def test_password_hashing():
     raw = "SuperSecretP@ss123"
     hashed = hash_password(raw)
     assert hashed != raw
-    assert hashed.startswith("$2b$")
+    assert hashed.startswith("$argon2id$")
     assert verify_password(raw, hashed) is True
     assert verify_password("WrongPassword!", hashed) is False
 
