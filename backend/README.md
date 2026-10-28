@@ -8,19 +8,20 @@ cd /Users/smarankv/Documents/GitHub/SecureShare
 # Create environment file from example (if not already present)
 cp -n .env.example .env
 
-# Activate Python virtual environment
-source backend/.venv/bin/activate
+# Activate Python virtual environment (created in project root)
+source .venv/bin/activate
 
-# Install dependencies
+# Upgrade pip and install backend dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # Run FastAPI backend server (http://localhost:8000)
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## 2. Start Frontend (Terminal 2)
 ```bash
-# Navigate to frontend folder
+# Open a new terminal and navigate to frontend folder
 cd /Users/smarankv/Documents/GitHub/SecureShare/frontend
 
 # Create environment file from example (if not already present)
@@ -36,14 +37,16 @@ npm run dev
 ## 3. Run Both in One Shot (Background)
 ```bash
 # From repository root
-backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+source .venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 cd frontend && npm run dev
 ```
 
 ## 4. Run Automated Security & Unit Tests
 ```bash
-# Run all 63 unit, integration & security test suites
-backend/.venv/bin/pytest tests/ -v
+# From repository root with .venv activated:
+source .venv/bin/activate
+pytest tests/ -v
 ```
 
 ## 5. Push Code to Git (Main Branch)

@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ==============================================================================
 # SecureShare Dynamic Application Security Testing (DAST) Compose Stack
 # Integrates official OWASP ZAP (Zed Attack Proxy) with SecureShare Backend

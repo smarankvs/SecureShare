@@ -16,6 +16,7 @@ services:
 
   clamav:
     image: clamav/clamav:stable
+    platform: linux/amd64
     ports: ["3310:3310"]
     environment:
       # Must be >= the 25 MB upload limit (clamd default is exactly 25M).

@@ -67,6 +67,7 @@ SecureShare/
 │   │   ├── auth.py              # User registration, login, token refresh
 │   │   ├── upload.py            # POST /upload endpoint with full security pipeline
 │   │   ├── files.py             # File metadata, SAS URL generation, deletion, stream
+│   │   ├── shares.py            # Secure sharing links, quota enforcement, recipient access
 │   │   └── users.py             # User profile and audit log querying
 │   ├── core/
 │   │   ├── config.py            # Pydantic Settings loaded from .env & Azure Key Vault
@@ -92,6 +93,12 @@ SecureShare/
 │   │   ├── logger.py            # Enterprise structured logging setup
 │   │   └── helpers.py           # Helper utilities
 │   └── main.py                  # FastAPI application entrypoint & lifespan
+│
+├── frontend/                    # Single-Page Application (React 19 + Vite + TypeScript)
+│   ├── src/                     # React components, MSAL identity provider, and API client
+│   ├── package.json             # Frontend dependencies & npm scripts
+│   ├── vite.config.ts           # Vite development server configuration
+│   └── README.md                # Dedicated frontend & Entra ID documentation
 │
 ├── alembic/                     # Database migrations
 │   ├── versions/
@@ -120,98 +127,196 @@ SecureShare/
 
 ## 4. How to Run the Project
 
+> [!TIP]
+> ### ⚡ Quick Reference: 2-Terminal Execution
+> SecureShare consists of a Python FastAPI backend and a React (Vite) frontend. For local development, run them in **two separate terminal windows**:
+> | Terminal | Working Directory | Primary Command | Port & URL |
+> | :--- | :--- | :--- | :--- |
+> | **Terminal 1 (Backend)** | `SecureShare/` (root) | `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload` | `http://localhost:8000` |
+> | **Terminal 2 (Frontend)** | `SecureShare/frontend` | `npm run dev` | `http://localhost:5173` |
+
+---
+
 ### 4.1 Prerequisites
-Before starting, ensure you have the following installed:
-* **Python**: `3.11` or `3.12+`
-* **Node.js & npm**: `Node.js 18+` (required for React frontend)
-* **Git**: Installed and configured
-* **Docker & Docker Compose**: *(Optional)* Required if running PostgreSQL, Azurite, or ClamAV via containers
+Before starting, ensure you have the following installed on your machine:
+* **Python**: `3.11` or `3.12+` (`python3 --version` or `python --version`)
+* **Node.js & npm**: `Node.js 18+` and `npm 9+` (`node -v` and `npm -v`)
+* **Git**: Installed and configured (`git --version`)
+* **Docker & Docker Compose**: *(Optional)* Required only if running via containers (Method 2)
 
 ---
 
 ### 4.2 Method 1: Local Development (Recommended)
 
-#### Step 1: Clone the Repository
+#### Step 1: Clone and Enter the Repository Root
 ```bash
+# Clone the repository
 git clone https://github.com/smarankvs/SecureShare.git
+
+# Navigate into the project root directory
 cd SecureShare
 ```
 
+---
+
 #### Step 2: Configure Environment Variables
-Copy the example configuration to `.env` (or customize as needed):
+Copy the root `.env.example` template into an active `.env` configuration:
+
 ```bash
+# ------------------------------------------------------------------------------
+# Linux / macOS / Git Bash:
+# ------------------------------------------------------------------------------
+cp .env.example .env
+
+# ------------------------------------------------------------------------------
+# Windows PowerShell:
+# ------------------------------------------------------------------------------
+Copy-Item .env.example .env
+
+# ------------------------------------------------------------------------------
+# Windows Command Prompt (CMD):
+# ------------------------------------------------------------------------------
+copy .env.example .env
+```
+
+> [!IMPORTANT]
+> **Cryptographic Key Generation:**
+> Ensure `SECRET_KEY` in `.env` is set to a secure 64-character hex key. You can generate one instantly with:
+> ```bash
+> python3 -c "import secrets; print(secrets.token_hex(32))"
+> ```
+
+---
+
+#### Step 3: Setup and Start the Backend (Terminal 1)
+
+> [!NOTE]
+> Make sure your current working directory is the **project root** (`SecureShare/`), **NOT** the `frontend/` directory.
+
+1. **Create and Activate a Python Virtual Environment:**
+
+   ```bash
+   # ===========================================================================
+   # Option A: Linux / macOS (bash / zsh)
+   # ===========================================================================
+   # Create virtual environment in '.venv' folder:
+   python3 -m venv .venv
+
+   # Activate virtual environment:
+   source .venv/bin/activate
+   # (Your terminal prompt will now show '(.venv)')
+
+   # ===========================================================================
+   # Option B: Windows (PowerShell)
+   # ===========================================================================
+   # Create virtual environment:
+   python -m venv .venv
+
+   # If script execution is restricted on your system, allow signed scripts once:
+   Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+   # Activate virtual environment:
+   .\.venv\Scripts\Activate.ps1
+
+   # ===========================================================================
+   # Option C: Windows (Command Prompt / CMD)
+   # ===========================================================================
+   # Create virtual environment:
+   python -m venv .venv
+
+   # Activate virtual environment:
+   .venv\Scripts\activate.bat
+   ```
+
+2. **Install Backend Python Dependencies:**
+
+   ```bash
+   # Upgrade pip to the latest release
+   pip install --upgrade pip
+
+   # Install all pinned dependencies from requirements.txt
+   pip install -r requirements.txt
+   ```
+
+   > [!TIP]
+   > **Troubleshooting `command not found: uvicorn`**:
+   > If you see `zsh: command not found: uvicorn` or `command not found: alembic`, it means your virtual environment is either not activated or `pip install -r requirements.txt` was not run yet. Verify your prompt displays `(.venv)` and run the install command above.
+
+3. **Initialize the Database:**
+
+   * **Option A — Default SQLite (Zero Setup Required):**
+     If PostgreSQL is not running locally, SecureShare automatically detects this and provisions a local SQLite database (`secureshare.db`) with zero manual setup. You can proceed directly to step 4!
+
+   * **Option B — PostgreSQL:**
+     If you are running PostgreSQL, ensure your connection string is set in `DATABASE_URL` within `.env`, then apply database migrations:
+     ```bash
+     # Apply database migrations to PostgreSQL
+     alembic upgrade head
+     ```
+
+4. **Launch the FastAPI Backend Server:**
+
+   ```bash
+   # Run with live-reload enabled (recommended for development):
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+   # Or run using the root runner script:
+   python main.py
+   ```
+
+   * The Backend REST API is live at **`http://localhost:8000`**
+   * The interactive OpenAPI / Swagger docs are live at **`http://localhost:8000/docs`**
+   * Keep this **Terminal 1** running!
+
+---
+
+#### Step 4: Setup and Start the Frontend (Terminal 2)
+
+> [!IMPORTANT]
+> Open a **NEW / SEPARATE terminal window** for this step. Do not stop or exit the backend server in Terminal 1.
+
+```bash
+# 1. Navigate from the project root into the frontend directory:
+cd frontend
+
+# 2. Copy the frontend environment template to .env:
 # On Linux / macOS / Git Bash:
 cp .env.example .env
 
 # On Windows PowerShell:
 Copy-Item .env.example .env
-```
-> [!IMPORTANT]
-> Ensure `SECRET_KEY` is set to a secure 64-character random string in `.env` (e.g. generated via `python -c "import secrets; print(secrets.token_hex(32))"`).
 
-#### Step 3: Setup and Start the Backend
-1. **Create and activate a virtual environment:**
-   ```bash
-   # Linux / macOS:
-   python3 -m venv .venv
-   source .venv/bin/activate
+# On Windows Command Prompt (CMD):
+copy .env.example .env
 
-   # Windows (PowerShell):
-   python -m venv .venv
-   # If you get an execution policy error, run: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-   .\.venv\Scripts\Activate.ps1
-
-   # Windows (Command Prompt):
-   .venv\Scripts\activate.bat
-   ```
-
-2. **Install Python dependencies:**
-   ```bash
-   .venv\Scripts\activate.bat
-   ```
-
-3. **Initialize the Database:**
-   * If running local PostgreSQL:
-     ```bash
-     alembic upgrade head
-     ```
-   * *Note:* If PostgreSQL is not running, the application automatically falls back to an embedded SQLite database (`secureshare.db`) with zero manual setup required.
-
-4. **Launch the FastAPI Server:**
-   ```bash
-   # Using Uvicorn directly:
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-   # Or using the root runner:
-   python main.py
-   ```
-   The backend API will be live at `http://localhost:8000`.
-
-#### Step 4: Setup and Start the Frontend
-Open a separate terminal window:
-```bash
-cd frontend
-cp .env.example .env   # Configure VITE_ENTRA_CLIENT_ID and VITE_ENTRA_TENANT_ID
+# 3. Install all Node.js and React dependencies:
 npm install
+
+# 4. Start the Vite React development server:
 npm run dev
 ```
-The React frontend web application will be live at `http://localhost:5173`.
-Refer to [frontend/README.md](file:///Users/smarankv/Documents/GitHub/SecureShare/frontend/README.md) for detailed Microsoft Entra ID App Registration configuration.
+
+* The React Web Dashboard is live at **`http://localhost:5173`**
+* The frontend automatically proxies API requests to the backend at `http://localhost:8000`.
+* For Microsoft Entra ID (Azure AD) Single Sign-On and Client ID setup, refer to [frontend/README.md](file:///Users/smarankv/Documents/GitHub/SecureShare/frontend/README.md).
 
 ---
 
 ### 4.3 Method 2: Full-Stack Containerized (Docker Compose)
 
-Run the backend, PostgreSQL database, Azure Blob Storage emulator (Azurite), and ClamAV antivirus daemon in isolated containers with a single command:
+Run the entire stack — backend, PostgreSQL 16, Azurite (Azure Blob Storage emulator), and ClamAV antivirus daemon — inside isolated containers with Docker:
 
 ```bash
-# Build and start all services in the background:
+# Step 1: Build and launch all 4 services in the background:
 docker compose up --build -d
 
-# View live service logs:
+# Step 2: Stream live logs from the backend API container:
 docker compose logs -f api
 
-# Stop all services:
+# Step 3: Check health status of all running containers:
+docker compose ps
+
+# Step 4: Stop all containers and clean up networks when done:
 docker compose down
 ```
 
@@ -219,23 +324,34 @@ docker compose down
 
 ### 4.4 Service Endpoints & Verification
 
-Once running, access the following interactive endpoints in your browser:
+Once services are running, verify system health and explore endpoints:
 
-| Service | URL | Description |
+| Service | URL | Purpose / Description |
 | :--- | :--- | :--- |
-| **Frontend Web App** | `http://localhost:5173` | React + Vite client dashboard |
-| **Backend REST API** | `http://localhost:8000` | FastAPI root endpoint |
-| **Swagger UI** | `http://localhost:8000/docs` | Interactive OpenAPI documentation & testing |
-| **ReDoc UI** | `http://localhost:8000/redoc` | Clean technical API specifications |
-| **Health Check** | `http://localhost:8000/health` | System status, database, & storage check |
+| **Frontend Web App** | `http://localhost:5173` | React 19 + Vite client dashboard & file explorer |
+| **Backend REST API** | `http://localhost:8000` | FastAPI root status endpoint |
+| **Swagger UI Docs** | `http://localhost:8000/docs` | Interactive OpenAPI documentation & live test console |
+| **ReDoc UI Docs** | `http://localhost:8000/redoc` | Clean technical API reference specifications |
+| **System Health Check** | `http://localhost:8000/health` | Comprehensive database, storage, and engine health probe |
 
 ---
 
 ### 4.5 Running Automated Tests
 
-Run the comprehensive integration and security test suite:
+To execute the automated test suite, ensure your virtual environment is active in the project root:
+
 ```bash
+# 1. Activate virtual environment (from project root):
+# Linux / macOS:
+source .venv/bin/activate
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+
+# 2. Run all unit and integration tests:
 pytest -v
+
+# 3. Run specific security validation tests (crypto, IDOR, MIME spoofing):
+pytest -v tests/test_security.py
 ```
 
 ---

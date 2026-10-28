@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ============================================================================
   # SecureShare FastAPI Backend Application
@@ -86,6 +84,7 @@ services:
   # ============================================================================
   clamav:
     image: clamav/clamav:latest
+    platform: linux/amd64
     container_name: secureshare_clamav
     restart: unless-stopped
     ports:
