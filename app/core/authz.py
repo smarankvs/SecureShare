@@ -8,8 +8,10 @@ allowed to touch a file record. The rules are intentionally simple and audited:
 - Otherwise                   -> the ORM record is returned
 """
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ForbiddenException, NotFoundException
@@ -17,6 +19,70 @@ from app.db import crud
 from app.db.models import FileRecord, Share, User
 
 logger = logging.getLogger("secureshare.authz")
+
+
+def verify_document_download_access(
+    db: Session,
+    file_id: str,
+    user: User,
+    ip_address: Optional[str] = None,
+    audit_action: str = "UNAUTHORIZED_DOWNLOAD_ATTEMPT",
+) -> FileRecord:
+    """
+    Assert that the caller may download the file content stream:
+    either as the document owner, or as the authorized recipient of a share grant.
+    """
+    file_record = crud.get_file_by_id(db, file_id)
+    if not file_record:
+        raise NotFoundException(f"File with ID '{file_id}' not found.")
+
+    # 1. Owner always has download access
+    if file_record.owner_id == user.id:
+        return file_record
+
+    # 2. Check for an active or validly reserved share grant for this recipient
+    now = datetime.now(timezone.utc)
+    user_email_lower = user.email.lower().strip()
+    share = (
+        db.query(Share)
+        .filter(
+            Share.file_id == file_id,
+            Share.status.in_([Share.STATUS_ACTIVE, Share.STATUS_EXHAUSTED]),
+            Share.status != Share.STATUS_REVOKED,
+            or_(
+                Share.recipient_user_id == user.id,
+                func.lower(Share.recipient_email) == user_email_lower,
+            ),
+        )
+        .first()
+    )
+
+    if share:
+        share_expires = share.expires_at
+        if share_expires and share_expires.tzinfo is None:
+            share_expires = share_expires.replace(tzinfo=timezone.utc)
+
+        if share_expires and share_expires > now:
+            return file_record
+
+    # 3. Deny access and log security audit event
+    crud.create_audit_log(
+        db,
+        action=audit_action or "PERMISSION_DENIED",
+        user_id=user.id,
+        username=user.email,
+        resource=f"files/{file_id}",
+        ip_address=ip_address,
+        status="ALERT",
+        details=f"User {user.id} ({user.email}) attempted unauthorized download of file {file_id} owned by {file_record.owner_id}",
+    )
+    logger.warning(
+        "Deny-by-default: user %s attempted unauthorized download of file %s owned by %s",
+        user.id,
+        file_id,
+        file_record.owner_id,
+    )
+    raise ForbiddenException("You do not have permission to access this file.")
 
 
 def verify_document_owner(

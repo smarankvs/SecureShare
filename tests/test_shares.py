@@ -271,3 +271,42 @@ def test_audit_trail_records_denied_attempt(client, owner, outsider, owned_file)
     logs = client.get("/api/v1/users/me/audit-logs", headers=outsider).json()
     actions = {entry["action"] for entry in logs}
     assert "SHARE_DOWNLOAD_DENIED" in actions
+
+
+def test_recipient_file_stream_download_allowed_and_outsider_forbidden(
+    client, owner, recipient, outsider
+):
+    # 1. Owner uploads a valid PDF
+    pdf_content = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
+    upload_res = client.post(
+        "/upload",
+        files={"file": ("shared_doc.pdf", pdf_content, "application/pdf")},
+        headers=owner,
+    )
+    assert upload_res.status_code == status.HTTP_201_CREATED
+    file_id = upload_res.json()["id"]
+
+    # 2. Owner shares file with recipient
+    share_res = _create_share(
+        client, owner, file_id, "bob.recipient@secureshare.io", max_downloads=2
+    )
+    assert share_res.status_code == status.HTTP_201_CREATED
+    share_data = share_res.json()
+
+    # 3. Recipient opens the share
+    open_res = client.post(
+        "/api/v1/shares/download",
+        headers=recipient,
+        json={"token": share_data["token"]},
+    )
+    assert open_res.status_code == status.HTTP_200_OK
+    download_url = open_res.json()["download_url"]
+
+    # 4. Recipient streams the file content (MUST SUCCEED)
+    stream_res = client.get(download_url, headers=recipient)
+    assert stream_res.status_code == status.HTTP_200_OK
+    assert stream_res.content == pdf_content
+
+    # 5. Outsider tries to stream the file directly (MUST BE 403 FORBIDDEN)
+    outsider_res = client.get(download_url, headers=outsider)
+    assert outsider_res.status_code == status.HTTP_403_FORBIDDEN

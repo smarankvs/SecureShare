@@ -118,10 +118,10 @@ def download_file_stream(
     if not resolved:
         raise NotFoundException("Requested file does not exist.")
 
-    file_record = authz.verify_document_owner(
+    file_record = authz.verify_document_download_access(
         db,
         resolved.id,
-        current_user.id,
+        current_user,
         ip_address=ctx["ip_address"],
         audit_action="UNAUTHORIZED_DOWNLOAD_ATTEMPT",
     )

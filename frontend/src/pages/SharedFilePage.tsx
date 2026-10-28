@@ -52,6 +52,10 @@ export function SharedFilePage() {
         );
       } else if (errorObj.statusCode === 401) {
         setErrorMessage('Your session has expired. Please sign in again to verify your identity.');
+      } else if (errorObj.statusCode === 403) {
+        setErrorMessage(
+          'Access denied. Your signed-in account is not authorized to download this document.'
+        );
       } else {
         setErrorMessage(
           errorObj.message ||
