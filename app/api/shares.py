@@ -215,12 +215,13 @@ documents_router.add_api_route(
 
 
 
-@router.post(
+@router.api_route(
     "/{share_id}/revoke",
+    methods=["POST", "PATCH"],
     response_model=ShareRevokeResponse,
     summary="Revoke a share grant",
     description=(
-        "Validates caller ownership, then sets status=REVOKED and revoked_at=now(). "
+        "Validates caller ownership, then sets status=REVOKED, revoked_by=caller.id, and revoked_at=now(). "
         "Revocation takes effect immediately for all subsequent download attempts."
     ),
 )
@@ -238,7 +239,17 @@ def revoke_share(
         id=revoked.id,
         status=revoked.status,
         revoked_at=revoked.revoked_at,
+        revoked_by=revoked.revoked_by,
     )
+
+
+documents_router.add_api_route(
+    "/shares/{share_id}/revoke",
+    revoke_share,
+    methods=["POST", "PATCH"],
+    response_model=ShareRevokeResponse,
+    summary="Revoke a share grant",
+)
 
 
 @router.post(

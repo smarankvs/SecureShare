@@ -65,6 +65,7 @@ class ShareResponse(BaseModel):
 
     id: str
     file_id: str
+    file_name: Optional[str] = None
     recipient_email: str
     token_prefix: str
     status: str
@@ -74,6 +75,7 @@ class ShareResponse(BaseModel):
     created_at: datetime
     last_downloaded_at: Optional[datetime] = None
     revoked_at: Optional[datetime] = None
+    revoked_by: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,6 +89,7 @@ class ShareRevokeResponse(BaseModel):
     id: str
     status: str
     revoked_at: Optional[datetime] = None
+    revoked_by: Optional[str] = None
 
 
 class ShareDownloadRequest(BaseModel):

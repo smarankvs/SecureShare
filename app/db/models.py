@@ -125,6 +125,10 @@ class Share(Base):
     file = relationship("FileRecord", back_populates="shares")
     creator = relationship("User", back_populates="shares_created", foreign_keys=[created_by])
 
+    @property
+    def file_name(self) -> Optional[str]:
+        return self.file.original_name if self.file else None
+
     def __repr__(self) -> str:
         return f"<Share(id={self.id}, file_id={self.file_id}, status={self.status})>"
 

@@ -5,6 +5,8 @@ import {
   getFileDetails,
   getFiles,
   getSharedWithMe,
+  listShares,
+  revokeShare,
   triggerFileDownload,
 } from '../api/apiClient.ts';
 import { useAuth } from '../auth/useAuth.ts';
@@ -12,6 +14,7 @@ import { FileTable } from '../components/FileTable.tsx';
 import {
   FileIcon,
   RefreshIcon,
+  ShareIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
   UploadCloudIcon,
@@ -19,9 +22,10 @@ import {
 } from '../components/Icons.tsx';
 import { Navbar } from '../components/Navbar.tsx';
 import { ShareModal } from '../components/ShareModal.tsx';
+import { SharedByMeTable } from '../components/SharedByMeTable.tsx';
 import { SharedWithMeTable } from '../components/SharedWithMeTable.tsx';
 import { UploadModal } from '../components/UploadModal.tsx';
-import type { FileItem, SharedWithMeItem } from '../types/index.ts';
+import type { FileItem, SharedWithMeItem, ShareResponse } from '../types/index.ts';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -31,6 +35,12 @@ export function DashboardPage() {
   const [totalFiles, setTotalFiles] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Outgoing shares state (Shared by me)
+  const [outgoingShares, setOutgoingShares] = useState<ShareResponse[]>([]);
+  const [totalOutgoingShares, setTotalOutgoingShares] = useState<number>(0);
+  const [isSharesLoading, setIsSharesLoading] = useState<boolean>(true);
+  const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
 
   // Shared with me state
   const [sharedDocs, setSharedDocs] = useState<SharedWithMeItem[]>([]);
@@ -60,6 +70,21 @@ export function DashboardPage() {
     }
   }, []);
 
+  const fetchOutgoingShares = useCallback(async () => {
+    setIsSharesLoading(true);
+    try {
+      const response = await listShares();
+      setOutgoingShares(response.shares);
+      setTotalOutgoingShares(response.total);
+    } catch {
+      // Non-blocking
+      setOutgoingShares([]);
+      setTotalOutgoingShares(0);
+    } finally {
+      setIsSharesLoading(false);
+    }
+  }, []);
+
   const fetchSharedDocs = useCallback(async () => {
     setIsSharedLoading(true);
     try {
@@ -76,19 +101,22 @@ export function DashboardPage() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([fetchFiles(), fetchSharedDocs()]);
-  }, [fetchFiles, fetchSharedDocs]);
+    await Promise.all([fetchFiles(), fetchOutgoingShares(), fetchSharedDocs()]);
+  }, [fetchFiles, fetchOutgoingShares, fetchSharedDocs]);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getFiles(0, 100), getSharedWithMe(0, 100)])
-      .then(([filesRes, sharedRes]) => {
+    Promise.all([getFiles(0, 100), listShares(), getSharedWithMe(0, 100)])
+      .then(([filesRes, sharesRes, sharedRes]) => {
         if (mounted) {
           setFiles(filesRes.files);
           setTotalFiles(filesRes.total);
+          setOutgoingShares(sharesRes.shares);
+          setTotalOutgoingShares(sharesRes.total);
           setSharedDocs(sharedRes.documents);
           setTotalShared(sharedRes.total);
           setIsLoading(false);
+          setIsSharesLoading(false);
           setIsSharedLoading(false);
         }
       })
@@ -97,6 +125,7 @@ export function DashboardPage() {
           const errorObj = err as Error;
           setError(errorObj.message || 'Unable to load documents from backend.');
           setIsLoading(false);
+          setIsSharesLoading(false);
           setIsSharedLoading(false);
         }
       });
@@ -150,6 +179,40 @@ export function DashboardPage() {
     }
   };
 
+  const handleRevokeShare = async (share: ShareResponse) => {
+    try {
+      setRevokingShareId(share.id);
+      await revokeShare(share.id);
+      // Immediately update local UI state to reflect REVOKED
+      setOutgoingShares((prev) =>
+        prev.map((s) =>
+          s.id === share.id
+            ? {
+                ...s,
+                status: 'REVOKED',
+                revoked_at: new Date().toISOString(),
+              }
+            : s
+        )
+      );
+      setActionNotice({
+        type: 'success',
+        message: `Successfully revoked access for ${share.recipient_email}. They can no longer download or view the document.`,
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+      fetchOutgoingShares();
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      setActionNotice({
+        type: 'error',
+        message: errorObj.message || `Failed to revoke access for ${share.recipient_email}`,
+      });
+      setTimeout(() => setActionNotice(null), 5000);
+    } finally {
+      setRevokingShareId(null);
+    }
+  };
+
   const handleDelete = async (file: FileItem) => {
     const confirmed = window.confirm(
       `Are you sure you want to permanently delete "${file.original_name}"? This will delete the encrypted blob from storage and revoke all active share links.`
@@ -196,7 +259,7 @@ export function DashboardPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={refreshAll}
-                disabled={isLoading || isSharedLoading}
+                disabled={isLoading || isSharesLoading || isSharedLoading}
                 title="Refresh document lists"
               >
                 <RefreshIcon size={16} />
@@ -227,6 +290,16 @@ export function DashboardPage() {
             </div>
 
             <div className="stat-card">
+              <div className="stat-icon-wrap stat-icon-indigo">
+                <ShareIcon size={20} />
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Shared by Me</span>
+                <span className="stat-val">{totalOutgoingShares}</span>
+              </div>
+            </div>
+
+            <div className="stat-card">
               <div className="stat-icon-wrap stat-icon-emerald">
                 <UsersIcon size={20} />
               </div>
@@ -243,16 +316,6 @@ export function DashboardPage() {
               <div className="stat-info">
                 <span className="stat-label">Storage Used</span>
                 <span className="stat-val">{totalMB} MB</span>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon-wrap stat-icon-emerald">
-                <ShieldCheckIcon size={20} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-label">Security Pipeline</span>
-                <span className="stat-val">Active (Argon2id &amp; ClamAV)</span>
               </div>
             </div>
           </div>
@@ -305,6 +368,27 @@ export function DashboardPage() {
             />
           </div>
 
+          {/* Shared by Me Section (Outgoing Access Grants with Revocation) */}
+          <div className="table-card" style={{ marginTop: '2rem' }}>
+            <div className="table-card-header">
+              <div>
+                <h2 className="table-card-title">Shared by Me</h2>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  Manage access permissions for documents you have shared. Revoke a recipient's access at any time without deleting your original file.
+                </p>
+              </div>
+              <span className="table-count-badge">{totalOutgoingShares} grants</span>
+            </div>
+
+            <SharedByMeTable
+              shares={outgoingShares}
+              files={files}
+              isLoading={isSharesLoading}
+              onRevoke={handleRevokeShare}
+              revokingId={revokingShareId}
+            />
+          </div>
+
           {/* Shared With Me Section */}
           <div className="table-card" style={{ marginTop: '2rem' }}>
             <div className="table-card-header">
@@ -342,7 +426,7 @@ export function DashboardPage() {
         file={shareTargetFile}
         onClose={() => setShareTargetFile(null)}
         onSuccess={() => {
-          // Keep dialog open to allow copying share link
+          fetchOutgoingShares();
         }}
       />
     </div>

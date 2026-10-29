@@ -47,23 +47,33 @@ def verify_document_download_access(
         db.query(Share)
         .filter(
             Share.file_id == file_id,
-            Share.status.in_([Share.STATUS_ACTIVE, Share.STATUS_EXHAUSTED]),
             Share.status != Share.STATUS_REVOKED,
             or_(
                 Share.recipient_user_id == user.id,
                 func.lower(Share.recipient_email) == user_email_lower,
             ),
         )
+        .order_by(Share.created_at.desc())
         .first()
     )
 
-    if share:
+    if share and share.status != Share.STATUS_REVOKED:
         share_expires = share.expires_at
         if share_expires and share_expires.tzinfo is None:
             share_expires = share_expires.replace(tzinfo=timezone.utc)
 
-        if share_expires and share_expires > now:
+        # Active unexpired share
+        if share.status == Share.STATUS_ACTIVE and share_expires and share_expires > now:
             return file_record
+
+        # Recently reserved download within the 15-minute stream window
+        if share.status == Share.STATUS_EXHAUSTED and share_expires and share_expires > now:
+            last_dl = share.last_downloaded_at
+            if last_dl:
+                if last_dl.tzinfo is None:
+                    last_dl = last_dl.replace(tzinfo=timezone.utc)
+                if (now - last_dl).total_seconds() <= 15 * 60:
+                    return file_record
 
     # 3. Deny access and log security audit event
     crud.create_audit_log(

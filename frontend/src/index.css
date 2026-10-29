@@ -167,6 +167,19 @@ body {
   color: #ffffff;
 }
 
+.btn-danger {
+  background-color: var(--danger-bg);
+  color: #f87171;
+  border-color: var(--danger-border);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background-color: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
+  color: #fca5a5;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+}
+
 .btn-sm {
   padding: 0.375rem 0.75rem;
   font-size: 0.8125rem;

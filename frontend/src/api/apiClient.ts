@@ -345,10 +345,10 @@ export async function listShares(fileId?: string): Promise<ShareListResponse> {
 }
 
 /**
- * Revoke an active share grant.
+ * Revoke an active share grant (PATCH /api/v1/shares/{share_id}/revoke).
  */
 export async function revokeShare(shareId: string): Promise<ShareRevokeResponse> {
-  const response = await apiClient.post<ShareRevokeResponse>(`/api/v1/shares/${shareId}/revoke`);
+  const response = await apiClient.patch<ShareRevokeResponse>(`/api/v1/shares/${shareId}/revoke`);
   return response.data;
 }
 

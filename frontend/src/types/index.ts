@@ -78,6 +78,7 @@ export interface ShareCreatedResponse {
 export interface ShareResponse {
   id: string;
   file_id: string;
+  file_name?: string | null;
   recipient_email: string;
   token_prefix: string;
   status: ShareStatus;
@@ -87,6 +88,7 @@ export interface ShareResponse {
   created_at: string;
   last_downloaded_at?: string | null;
   revoked_at?: string | null;
+  revoked_by?: string | null;
 }
 
 export interface ShareListResponse {
@@ -98,6 +100,7 @@ export interface ShareRevokeResponse {
   id: string;
   status: ShareStatus;
   revoked_at?: string | null;
+  revoked_by?: string | null;
 }
 
 export interface ShareDownloadRequest {

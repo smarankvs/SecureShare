@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 from sqlalchemy import select, func, update, or_, case
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.security import hash_password
 from app.db.models import User, FileRecord, AuditLog, Share
 from app.schemas import UserCreate
@@ -336,8 +336,13 @@ def list_shares_for_user(
     List shares administrable by `user_id` (creator, or owner of the file).
     Never returns token material.
     """
-    base = select(Share).join(FileRecord, Share.file_id == FileRecord.id).where(
-        or_(Share.created_by == user_id, FileRecord.owner_id == user_id)
+    base = (
+        select(Share)
+        .options(joinedload(Share.file))
+        .join(FileRecord, Share.file_id == FileRecord.id)
+        .where(
+            or_(Share.created_by == user_id, FileRecord.owner_id == user_id)
+        )
     )
     if file_id:
         base = base.where(Share.file_id == file_id)
