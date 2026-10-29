@@ -114,6 +114,19 @@ def update_user_password(db: Session, user_id: str, new_hashed_pwd: str) -> Opti
     return user
 
 
+def update_user_profile(db: Session, user_id: str, name: str) -> Optional[User]:
+    """Update profile attributes for a user (only permitted fields: name; email is strictly read-only)."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    user.name = name.strip()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+
 
 # =========================================================
 # FILE OPERATIONS
@@ -431,4 +444,107 @@ def link_share_recipient(db: Session, share: Share, user_id: str) -> None:
         db.add(share)
         db.commit()
         db.refresh(share)
+
+
+def list_received_shares_for_user(
+    db: Session,
+    user: User,
+    skip: int = 0,
+    limit: int = 50,
+) -> Tuple[List[dict], int]:
+    """
+    List active documents shared with the authenticated user (by recipient_user_id or recipient_email).
+    """
+    now = datetime.now(timezone.utc)
+    user_email_lower = user.email.lower().strip()
+
+    stmt = (
+        select(Share, FileRecord, User)
+        .join(FileRecord, Share.file_id == FileRecord.id)
+        .join(User, Share.created_by == User.id)
+        .where(
+            or_(
+                Share.recipient_user_id == user.id,
+                func.lower(Share.recipient_email) == user_email_lower,
+            ),
+            Share.status == Share.STATUS_ACTIVE,
+            Share.expires_at > now,
+            Share.download_count < Share.max_downloads,
+        )
+    )
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = db.execute(count_stmt).scalar() or 0
+
+    results = (
+        db.execute(stmt.order_by(Share.created_at.desc()).offset(skip).limit(limit))
+        .all()
+    )
+
+    items = []
+    for share, file_record, sender in results:
+        remaining = max(0, share.max_downloads - share.download_count)
+        items.append({
+            "share_id": share.id,
+            "file_id": file_record.id,
+            "file_name": file_record.original_name,
+            "size": file_record.size,
+            "content_type": file_record.content_type,
+            "sender_name": sender.name,
+            "sender_email": sender.email,
+            "shared_at": share.created_at,
+            "expires_at": share.expires_at,
+            "status": share.status,
+            "max_downloads": share.max_downloads,
+            "download_count": share.download_count,
+            "remaining_downloads": remaining,
+            "can_download": remaining > 0 and share.status == Share.STATUS_ACTIVE,
+        })
+
+    return items, total
+
+
+def reserve_share_download_by_id(
+    db: Session,
+    share_id: str,
+    user_id: str,
+    email: str,
+) -> Optional[Tuple[int, int, str]]:
+    """
+    Atomically validate every download policy gate by share_id for an authenticated recipient.
+    Returns (download_count, max_downloads, share_id) on success, or None if failed.
+    """
+    exhausted_status = case(
+        (Share.download_count + 1 >= Share.max_downloads, Share.STATUS_EXHAUSTED),
+        else_=Share.status,
+    )
+
+    stmt = (
+        update(Share)
+        .where(
+            Share.id == share_id,
+            Share.status == Share.STATUS_ACTIVE,
+            Share.expires_at > func.now(),
+            Share.download_count < Share.max_downloads,
+            or_(
+                Share.recipient_user_id == user_id,
+                func.lower(Share.recipient_email) == email.lower().strip(),
+            ),
+        )
+        .values(
+            download_count=Share.download_count + 1,
+            last_downloaded_at=func.now(),
+            recipient_user_id=user_id,
+            status=exhausted_status,
+        )
+        .returning(Share.id, Share.download_count, Share.max_downloads)
+    )
+
+    row = db.execute(stmt).first()
+    if row is None:
+        return None
+
+    db.commit()
+    return int(row[1]), int(row[2]), str(row[0])
+
 

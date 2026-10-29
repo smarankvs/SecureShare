@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { deleteFile, getFileDetails, getFiles, triggerFileDownload } from '../api/apiClient.ts';
+import {
+  deleteFile,
+  downloadSharedWithMeFile,
+  getFileDetails,
+  getFiles,
+  getSharedWithMe,
+  triggerFileDownload,
+} from '../api/apiClient.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import { FileTable } from '../components/FileTable.tsx';
 import {
@@ -8,19 +15,28 @@ import {
   ShieldAlertIcon,
   ShieldCheckIcon,
   UploadCloudIcon,
+  UsersIcon,
 } from '../components/Icons.tsx';
 import { Navbar } from '../components/Navbar.tsx';
 import { ShareModal } from '../components/ShareModal.tsx';
+import { SharedWithMeTable } from '../components/SharedWithMeTable.tsx';
 import { UploadModal } from '../components/UploadModal.tsx';
-import type { FileItem } from '../types/index.ts';
+import type { FileItem, SharedWithMeItem } from '../types/index.ts';
 
 export function DashboardPage() {
   const { user } = useAuth();
 
+  // My uploaded files state
   const [files, setFiles] = useState<FileItem[]>([]);
   const [totalFiles, setTotalFiles] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Shared with me state
+  const [sharedDocs, setSharedDocs] = useState<SharedWithMeItem[]>([]);
+  const [totalShared, setTotalShared] = useState<number>(0);
+  const [isSharedLoading, setIsSharedLoading] = useState<boolean>(true);
+  const [downloadingShareId, setDownloadingShareId] = useState<string | null>(null);
 
   // Modals state
   const [isUploadOpen, setIsUploadOpen] = useState<boolean>(false);
@@ -44,14 +60,36 @@ export function DashboardPage() {
     }
   }, []);
 
+  const fetchSharedDocs = useCallback(async () => {
+    setIsSharedLoading(true);
+    try {
+      const response = await getSharedWithMe(0, 100);
+      setSharedDocs(response.documents);
+      setTotalShared(response.total);
+    } catch {
+      // Non-blocking for dashboard
+      setSharedDocs([]);
+      setTotalShared(0);
+    } finally {
+      setIsSharedLoading(false);
+    }
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([fetchFiles(), fetchSharedDocs()]);
+  }, [fetchFiles, fetchSharedDocs]);
+
   useEffect(() => {
     let mounted = true;
-    getFiles(0, 100)
-      .then((response) => {
+    Promise.all([getFiles(0, 100), getSharedWithMe(0, 100)])
+      .then(([filesRes, sharedRes]) => {
         if (mounted) {
-          setFiles(response.files);
-          setTotalFiles(response.total);
+          setFiles(filesRes.files);
+          setTotalFiles(filesRes.total);
+          setSharedDocs(sharedRes.documents);
+          setTotalShared(sharedRes.total);
           setIsLoading(false);
+          setIsSharedLoading(false);
         }
       })
       .catch((err: unknown) => {
@@ -59,6 +97,7 @@ export function DashboardPage() {
           const errorObj = err as Error;
           setError(errorObj.message || 'Unable to load documents from backend.');
           setIsLoading(false);
+          setIsSharedLoading(false);
         }
       });
     return () => {
@@ -81,6 +120,33 @@ export function DashboardPage() {
         message: errorObj.message || `Failed to download ${file.original_name}`,
       });
       setTimeout(() => setActionNotice(null), 5000);
+    }
+  };
+
+  const handleSharedDownload = async (item: SharedWithMeItem) => {
+    try {
+      setDownloadingShareId(item.share_id);
+      setActionNotice({
+        type: 'success',
+        message: `Evaluating zero-trust policy gates and generating download for ${item.file_name}...`,
+      });
+      const res = await downloadSharedWithMeFile(item.share_id);
+      await triggerFileDownload(res.download_url, res.file_name);
+      setActionNotice({
+        type: 'success',
+        message: `Successfully downloaded ${res.file_name}`,
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+      fetchSharedDocs();
+    } catch (err: unknown) {
+      const errorObj = err as Error;
+      setActionNotice({
+        type: 'error',
+        message: errorObj.message || `Failed to download ${item.file_name}`,
+      });
+      setTimeout(() => setActionNotice(null), 5000);
+    } finally {
+      setDownloadingShareId(null);
     }
   };
 
@@ -121,7 +187,7 @@ export function DashboardPage() {
               <h1 className="dashboard-title">Document Security Center</h1>
               <p className="dashboard-subtitle">
                 Welcome, <strong>{user?.name}</strong>. Manage your encrypted documents and access
-                grants with Microsoft Entra ID verification.
+                grants with zero-trust local verification.
               </p>
             </div>
 
@@ -129,9 +195,9 @@ export function DashboardPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={fetchFiles}
-                disabled={isLoading}
-                title="Refresh document list"
+                onClick={refreshAll}
+                disabled={isLoading || isSharedLoading}
+                title="Refresh document lists"
               >
                 <RefreshIcon size={16} />
                 <span>Refresh</span>
@@ -155,8 +221,18 @@ export function DashboardPage() {
                 <FileIcon size={20} />
               </div>
               <div className="stat-info">
-                <span className="stat-label">Total Documents</span>
+                <span className="stat-label">My Documents</span>
                 <span className="stat-val">{totalFiles}</span>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon-wrap stat-icon-emerald">
+                <UsersIcon size={20} />
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Shared With Me</span>
+                <span className="stat-val">{totalShared}</span>
               </div>
             </div>
 
@@ -176,7 +252,7 @@ export function DashboardPage() {
               </div>
               <div className="stat-info">
                 <span className="stat-label">Security Pipeline</span>
-                <span className="stat-val">Active (ClamAV &amp; Magic Bytes)</span>
+                <span className="stat-val">Active (Argon2id &amp; ClamAV)</span>
               </div>
             </div>
           </div>
@@ -205,7 +281,7 @@ export function DashboardPage() {
                 <button
                   type="button"
                   className="btn btn-sm btn-secondary retry-btn"
-                  onClick={fetchFiles}
+                  onClick={refreshAll}
                 >
                   Retry
                 </button>
@@ -213,10 +289,10 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* File Management Table */}
+          {/* My Uploaded Files Management Table */}
           <div className="table-card">
             <div className="table-card-header">
-              <h2 className="table-card-title">Encrypted Documents</h2>
+              <h2 className="table-card-title">My Encrypted Documents</h2>
               <span className="table-count-badge">{totalFiles} items</span>
             </div>
 
@@ -226,6 +302,26 @@ export function DashboardPage() {
               onShare={(file) => setShareTargetFile(file)}
               onDownload={handleDownload}
               onDelete={handleDelete}
+            />
+          </div>
+
+          {/* Shared With Me Section */}
+          <div className="table-card" style={{ marginTop: '2rem' }}>
+            <div className="table-card-header">
+              <div>
+                <h2 className="table-card-title">Shared With Me</h2>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  Documents securely shared with your account by other users. Download directly without opening an external email link.
+                </p>
+              </div>
+              <span className="table-count-badge">{totalShared} shared</span>
+            </div>
+
+            <SharedWithMeTable
+              items={sharedDocs}
+              isLoading={isSharedLoading}
+              onDownload={handleSharedDownload}
+              downloadingId={downloadingShareId}
             />
           </div>
         </div>

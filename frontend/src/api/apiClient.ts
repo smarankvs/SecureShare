@@ -16,8 +16,10 @@ import type {
   ShareDownloadResponse,
   ShareListResponse,
   ShareRevokeResponse,
+  SharedWithMeResponse,
   TokenResponse,
   UserProfile,
+  UserProfileUpdate,
   UserResponse,
 } from '../types/index.ts';
 
@@ -358,6 +360,35 @@ export async function downloadSharedFile(token: string): Promise<ShareDownloadRe
   const response = await apiClient.post<ShareDownloadResponse>('/api/v1/shares/download', {
     token,
   });
+  return response.data;
+}
+
+/**
+ * Retrieve list of active documents shared with the currently authenticated user.
+ */
+export async function getSharedWithMe(skip = 0, limit = 100): Promise<SharedWithMeResponse> {
+  const response = await apiClient.get<SharedWithMeResponse>('/api/v1/documents/shared-with-me', {
+    params: { skip, limit },
+  });
+  return response.data;
+}
+
+/**
+ * Gatekeeper download for a document shared with the currently authenticated user.
+ */
+export async function downloadSharedWithMeFile(shareId: string): Promise<ShareDownloadResponse> {
+  const response = await apiClient.post<ShareDownloadResponse>(
+    `/api/v1/documents/shared-with-me/${shareId}/download`
+  );
+  return response.data;
+}
+
+/**
+ * Update authenticated user's profile display name.
+ * Registered email is read-only and immutable.
+ */
+export async function updateUserProfile(payload: UserProfileUpdate): Promise<UserResponse> {
+  const response = await apiClient.patch<UserResponse>('/api/v1/users/me', payload);
   return response.data;
 }
 

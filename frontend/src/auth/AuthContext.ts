@@ -18,6 +18,7 @@ export interface AuthContextType {
   logout: () => Promise<void>;
   getAccessToken: () => string | null;
   clearError: () => void;
+  updateUser: (updatedFields: Partial<AuthUser>) => void;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);

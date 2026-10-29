@@ -112,6 +112,11 @@ class AuditLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# Profile Schemas
+class UserProfileUpdate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100, description="Full name of user")
+
+
 # Standard API Response wrapper
 class MessageResponse(BaseModel):
     message: str
@@ -126,5 +131,8 @@ from app.schemas.shares import (  # noqa: E402,F401
     ShareListResponse,
     ShareResponse,
     ShareRevokeResponse,
+    SharedWithMeItem,
+    SharedWithMeResponse,
 )
+
 

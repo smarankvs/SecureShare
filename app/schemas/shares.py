@@ -107,3 +107,28 @@ class ShareDownloadResponse(BaseModel):
     download_url: str
     expires_in_seconds: int
     remaining_downloads: int
+
+
+class SharedWithMeItem(BaseModel):
+    share_id: str
+    file_id: str
+    file_name: str
+    size: int
+    content_type: str
+    sender_name: str
+    sender_email: str
+    shared_at: datetime
+    expires_at: datetime
+    status: str
+    max_downloads: int
+    download_count: int
+    remaining_downloads: int
+    can_download: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SharedWithMeResponse(BaseModel):
+    total: int
+    documents: list[SharedWithMeItem]
+

@@ -99,6 +99,7 @@ app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(upload.router, prefix=settings.API_V1_STR)
 app.include_router(files.router, prefix=settings.API_V1_STR)
 app.include_router(shares.router, prefix=settings.API_V1_STR)
+app.include_router(shares.documents_router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
 
 

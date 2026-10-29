@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { downloadSharedFile, triggerFileDownload } from '../api/apiClient.ts';
 import { useAuth } from '../auth/useAuth.ts';
 import {
+  ArrowLeftIcon,
   CheckIcon,
   DownloadIcon,
   FileIcon,
@@ -73,6 +74,19 @@ export function SharedFilePage() {
 
       <main className="shared-page-main">
         <div className="shared-page-container">
+          {/* Top navigation back to recipient's dashboard */}
+          <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'flex-start' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => navigate('/')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <ArrowLeftIcon size={16} />
+              <span>Back to Dashboard</span>
+            </button>
+          </div>
+
           <div className="shared-file-card">
             <div className="shared-card-header">
               <div className="shared-icon-badge">
@@ -137,16 +151,25 @@ export function SharedFilePage() {
                         <span className="pill-val">{downloadSuccess.remaining_downloads}</span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-secondary mt-4"
-                      onClick={handleDownload}
-                      disabled={isDownloading || downloadSuccess.remaining_downloads <= 0}
-                    >
-                      {downloadSuccess.remaining_downloads > 0
-                        ? 'Download Again'
-                        : 'Download Limit Reached'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={handleDownload}
+                        disabled={isDownloading || downloadSuccess.remaining_downloads <= 0}
+                      >
+                        {downloadSuccess.remaining_downloads > 0
+                          ? 'Download Again'
+                          : 'Download Limit Reached'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => navigate('/')}
+                      >
+                        Go to My Dashboard
+                      </button>
+                    </div>
                   </div>
                 ) : !isAuthenticated ? (
                   <div className="auth-required-box">

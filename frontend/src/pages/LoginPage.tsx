@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.ts';
 import {
+  EyeIcon,
+  EyeOffIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
   ShieldIcon,
@@ -18,6 +20,7 @@ export function LoginPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // If already authenticated, redirect to destination or dashboard
@@ -73,6 +76,7 @@ export function LoginPage() {
   const handleTabSwitch = (newMode: 'login' | 'register') => {
     clearError();
     setValidationError(null);
+    setShowPassword(false);
     setMode(newMode);
   };
 
@@ -186,17 +190,41 @@ export function LoginPage() {
               <label className="form-label" htmlFor="user-password">
                 Password
               </label>
-              <input
-                id="user-password"
-                type="password"
-                className="input"
-                placeholder="••••••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                required
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  id="user-password"
+                  type={showPassword ? 'text' : 'password'}
+                  className="input"
+                  style={{ paddingRight: '2.5rem', width: '100%' }}
+                  placeholder="••••••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  style={{
+                    position: 'absolute',
+                    right: '0.75rem',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0.25rem',
+                    borderRadius: '4px',
+                  }}
+                >
+                  {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                </button>
+              </div>
               {mode === 'register' && (
                 <span className="form-hint" style={{ marginTop: '0.25rem', display: 'block' }}>
                   Min 8 chars with uppercase, lowercase, digit, & special character (@$!%*?&#^_-).

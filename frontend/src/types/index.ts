@@ -158,3 +158,29 @@ export interface UserResponse {
   is_active: boolean;
   created_at: string;
 }
+
+export interface UserProfileUpdate {
+  name: string;
+}
+
+export interface SharedWithMeItem {
+  share_id: string;
+  file_id: string;
+  file_name: string;
+  size: number;
+  content_type: string;
+  sender_name: string;
+  sender_email: string;
+  shared_at: string;
+  expires_at: string;
+  status: string;
+  max_downloads: number;
+  download_count: number;
+  remaining_downloads: number;
+  can_download: boolean;
+}
+
+export interface SharedWithMeResponse {
+  total: number;
+  documents: SharedWithMeItem[];
+}

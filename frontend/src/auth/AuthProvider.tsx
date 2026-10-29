@@ -126,6 +126,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
+  const updateUser = useCallback((updatedFields: Partial<AuthUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...updatedFields } : null));
+  }, []);
+
   const contextValue = useMemo<AuthContextType>(
     () => ({
       isAuthenticated: Boolean(user && getStoredAccessToken()),
@@ -137,8 +141,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       logout,
       getAccessToken,
       clearError,
+      updateUser,
     }),
-    [user, isLoading, error, login, register, logout, getAccessToken, clearError]
+    [user, isLoading, error, login, register, logout, getAccessToken, clearError, updateUser]
   );
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;

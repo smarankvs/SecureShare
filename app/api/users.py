@@ -8,7 +8,7 @@ from app.db import crud
 from app.db.database import get_db
 from app.db.models import User
 from app.middleware.auth import get_current_user
-from app.schemas import AuditLogResponse, RoleUpdateRequest, UserResponse
+from app.schemas import AuditLogResponse, RoleUpdateRequest, UserProfileUpdate, UserResponse
 
 logger = logging.getLogger("secureshare.users_api")
 
@@ -33,6 +33,42 @@ def get_current_user_profile(
     current_user: User = Depends(get_current_user)
 ):
     return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Update Current User Profile",
+    description="Updates the profile information for the authenticated user (name only; email is strictly read-only)."
+)
+def update_current_user_profile(
+    payload: UserProfileUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    ctx = _extract_request_context(request)
+
+    # Strictly update permitted fields only (name). Email is immutable.
+    updated_user = crud.update_user_profile(db, current_user.id, name=payload.name)
+    if not updated_user:
+        raise NotFoundException("User not found.")
+
+    crud.create_audit_log(
+        db,
+        action="PROFILE_UPDATE",
+        user_id=current_user.id,
+        username=current_user.email,
+        resource="users/me",
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+        request_id=ctx["request_id"],
+        status="SUCCESS",
+        details=f"User {current_user.email} updated profile name to '{updated_user.name}'"
+    )
+
+    return updated_user
+
 
 
 @router.get(
