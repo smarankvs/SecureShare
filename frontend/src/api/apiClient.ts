@@ -238,10 +238,14 @@ apiClient.interceptors.response.use(
 // ==============================================================================
 
 /**
- * Authenticate with email and password and receive JWT tokens.
+ * Authenticate with email or username and password and receive JWT tokens.
  */
 export async function loginUser(payload: LoginRequest): Promise<TokenResponse> {
-  const response = await apiClient.post<TokenResponse>('/api/v1/auth/login', payload);
+  const body = {
+    identifier: (payload.identifier || payload.email || '').trim(),
+    password: payload.password,
+  };
+  const response = await apiClient.post<TokenResponse>('/api/v1/auth/login', body);
   if (response.data.access_token) {
     setStoredAccessToken(response.data.access_token);
   }

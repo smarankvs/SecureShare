@@ -1,12 +1,19 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from typing import Optional, List, Any
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, model_validator
 
 
 # User Schemas
 class UserBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Full name of user")
     email: EmailStr = Field(..., description="Unique email address")
+    username: Optional[str] = Field(
+        None,
+        min_length=3,
+        max_length=50,
+        pattern=r"^[a-zA-Z0-9_.-]+$",
+        description="Optional unique username (alphanumeric, underscore, dot, hyphen)"
+    )
 
 
 class UserCreate(UserBase):
@@ -29,8 +36,37 @@ class UserResponse(UserBase):
 
 # Auth Schemas
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+    identifier: Optional[str] = Field(None, description="Registered email address or username")
+    email: Optional[str] = Field(None, description="Legacy email field for backwards compatibility")
+    password: str = Field(..., min_length=1, description="Account password")
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_identifier_or_email(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            identifier = values.get("identifier")
+            email = values.get("email")
+
+            # Treat empty strings or pure whitespace as None
+            if identifier is not None and not str(identifier).strip():
+                identifier = None
+                values["identifier"] = None
+            if email is not None and not str(email).strip():
+                email = None
+                values["email"] = None
+
+            if not identifier and not email:
+                raise ValueError("An email address or username must be provided.")
+
+            if not identifier and email:
+                values["identifier"] = str(email).strip()
+            elif identifier:
+                values["identifier"] = str(identifier).strip()
+
+            pwd = values.get("password")
+            if pwd is not None and isinstance(pwd, str) and not pwd.strip():
+                raise ValueError("Password cannot be empty.")
+        return values
 
 
 class ChangePasswordRequest(BaseModel):

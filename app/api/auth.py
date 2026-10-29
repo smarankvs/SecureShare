@@ -96,6 +96,23 @@ def register_user(
         )
         raise ConflictException("A user with this email address already exists.")
 
+    if user_in.username:
+        clean_username = user_in.username.strip().lower()
+        if crud.get_user_by_username(db, clean_username) or crud.get_user_by_email(db, clean_username):
+            logger.warning(f"Registration conflict: username '{user_in.username}' already registered.")
+            crud.create_audit_log(
+                db,
+                action="REGISTRATION_FAILED",
+                username=user_in.email,
+                resource="auth/register",
+                ip_address=ctx["ip_address"],
+                user_agent=ctx["user_agent"],
+                request_id=ctx["request_id"],
+                status="FAILED",
+                details=f"Username conflict: {user_in.username}"
+            )
+            raise ConflictException("A user with this username already exists.")
+
     # 3. Create user record
     new_user = crud.create_user(db, user_in)
     logger.info(f"User registered successfully: {new_user.email} (ID: {new_user.id})")
@@ -130,21 +147,22 @@ def login(
     db: Session = Depends(get_db)
 ):
     ctx = _extract_request_context(request)
-    user = crud.get_user_by_email(db, login_data.email)
+    target_identifier = (login_data.identifier or login_data.email or "").strip()
+    user = crud.get_user_by_identifier(db, target_identifier)
 
     if not user or not verify_password(login_data.password, user.password_hash):
-        logger.warning(f"Failed login attempt for email: {login_data.email} from IP: {ctx['ip_address']}")
+        logger.warning(f"Failed login attempt for identifier: {target_identifier} from IP: {ctx['ip_address']}")
         crud.create_audit_log(
             db,
             action="FAILED_LOGIN",
             user_id=user.id if user else None,
-            username=login_data.email,
+            username=target_identifier,
             resource="auth/login",
             ip_address=ctx["ip_address"],
             user_agent=ctx["user_agent"],
             request_id=ctx["request_id"],
             status="FAILED",
-            details=f"Failed login attempt for {login_data.email}"
+            details=f"Failed login attempt for {target_identifier}"
         )
         raise UnauthorizedException("Invalid email or password.")
 
@@ -166,7 +184,12 @@ def login(
     # Generate Access and Refresh Tokens
     access_token = create_access_token(
         subject=user.id,
-        extra_claims={"email": user.email, "name": user.name, "role": user.role}
+        extra_claims={
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "username": user.username
+        }
     )
     refresh_token = create_refresh_token(subject=user.id)
 

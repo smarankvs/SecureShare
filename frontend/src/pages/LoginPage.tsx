@@ -18,6 +18,7 @@ export function LoginPage() {
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -45,14 +46,23 @@ export function LoginPage() {
       ? `${state.from.pathname}${state.from.search}`
       : sessionStorage.getItem('secureshare_intended_path') || '/';
 
-    if (!email.trim() || !password) {
-      setValidationError('Please provide both email and password.');
-      return;
-    }
-
-    if (mode === 'register') {
+    if (mode === 'login') {
+      if (!identifier.trim() || !password) {
+        setValidationError('Please provide your email or username and password.');
+        return;
+      }
+      try {
+        await login(identifier.trim(), password, targetPath);
+      } catch {
+        // Error state handled by AuthContext
+      }
+    } else {
       if (!name.trim()) {
         setValidationError('Please provide your full name.');
+        return;
+      }
+      if (!email.trim() || !password) {
+        setValidationError('Please provide both email and password.');
         return;
       }
       if (password.length < 8) {
@@ -64,12 +74,6 @@ export function LoginPage() {
       } catch {
         // Error state handled by AuthContext
       }
-    } else {
-      try {
-        await login(email.trim().toLowerCase(), password, targetPath);
-      } catch {
-        // Error state handled by AuthContext
-      }
     }
   };
 
@@ -77,6 +81,11 @@ export function LoginPage() {
     clearError();
     setValidationError(null);
     setShowPassword(false);
+    if (newMode === 'login' && !identifier && email) {
+      setIdentifier(email);
+    } else if (newMode === 'register' && !email && identifier && identifier.includes('@')) {
+      setEmail(identifier);
+    }
     setMode(newMode);
   };
 
@@ -169,22 +178,41 @@ export function LoginPage() {
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="user-email">
-                Email Address
-              </label>
-              <input
-                id="user-email"
-                type="email"
-                className="input"
-                placeholder="name@organization.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-                required
-                autoComplete="email"
-              />
-            </div>
+            {mode === 'login' ? (
+              <div className="form-group">
+                <label className="form-label" htmlFor="user-identifier">
+                  Email or Username
+                </label>
+                <input
+                  id="user-identifier"
+                  type="text"
+                  className="input"
+                  placeholder="Enter your email or username"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  autoComplete="username"
+                />
+              </div>
+            ) : (
+              <div className="form-group">
+                <label className="form-label" htmlFor="user-email">
+                  Email Address
+                </label>
+                <input
+                  id="user-email"
+                  type="email"
+                  className="input"
+                  placeholder="name@organization.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label" htmlFor="user-password">

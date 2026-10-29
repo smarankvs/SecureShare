@@ -11,6 +11,7 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
+  username?: string | null;
   is_active: boolean;
   created_at?: string;
   auth_source?: string;
@@ -137,7 +138,8 @@ export interface ApiErrorResponse {
 }
 
 export interface LoginRequest {
-  email: string;
+  identifier?: string;
+  email?: string;
   password: string;
 }
 
@@ -158,6 +160,7 @@ export interface UserResponse {
   id: string;
   name: string;
   email: string;
+  username?: string | null;
   is_active: boolean;
   created_at: string;
 }

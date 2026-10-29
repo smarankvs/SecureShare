@@ -21,6 +21,7 @@ class User(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    username = Column(String(50), unique=True, index=True, nullable=True)
     password_hash = Column(String(255), nullable=True)
     # Immutable Microsoft Entra ID Object ID (oid claim). Null for local-only users.
     entra_oid = Column(String(64), unique=True, index=True, nullable=True)
@@ -36,7 +37,7 @@ class User(Base):
 
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, email={self.email})>"
+        return f"<User(id={self.id}, email={self.email}, username={self.username})>"
 
 
 class FileRecord(Base):

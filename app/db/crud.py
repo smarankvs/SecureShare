@@ -21,6 +21,43 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
     return db.execute(stmt).scalar_one_or_none()
 
 
+def get_user_by_username(db: Session, username: str) -> Optional[User]:
+    """Retrieve a user by their unique username (case-insensitive) using parameterized query."""
+    if not username or not username.strip():
+        return None
+    stmt = select(User).where(func.lower(User.username) == username.lower().strip())
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_user_by_identifier(db: Session, identifier: str) -> Optional[User]:
+    """
+    Retrieve a user by their email or username (case-insensitive).
+    Safely handles ambiguous matches: if an identifier matches multiple distinct
+    user records (e.g., User A's email and User B's username), returns None to prevent
+    arbitrary or insecure account resolution.
+    """
+    if not identifier or not identifier.strip():
+        return None
+    normalized = identifier.strip().lower()
+    stmt = select(User).where(
+        or_(
+            func.lower(User.email) == normalized,
+            func.lower(User.username) == normalized
+        )
+    )
+    matches = list(db.execute(stmt).scalars().all())
+    # Deduplicate by primary key ID
+    unique_matches = {u.id: u for u in matches}
+    if len(unique_matches) > 1:
+        logger.warning(
+            f"Ambiguous identifier lookup for '{identifier}' matched {len(unique_matches)} distinct users."
+        )
+        return None
+    if len(unique_matches) == 1:
+        return next(iter(unique_matches.values()))
+    return None
+
+
 def get_user_by_id(db: Session, user_id: str) -> Optional[User]:
     """Retrieve a user by their unique primary key ID."""
     stmt = select(User).where(User.id == user_id)
@@ -33,6 +70,7 @@ def create_user(db: Session, user_in: UserCreate) -> User:
     user = User(
         name=user_in.name.strip(),
         email=user_in.email.lower().strip(),
+        username=user_in.username.lower().strip() if user_in.username else None,
         password_hash=hashed_pwd,
         is_active=True
     )

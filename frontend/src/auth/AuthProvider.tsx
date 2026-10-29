@@ -43,7 +43,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             id: profile.id,
             name: profile.name,
             email: profile.email,
-            username: profile.email,
+            username: profile.username || profile.email,
           });
           setIsLoading(false);
         }
@@ -62,11 +62,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string, redirectPath?: string) => {
+    async (identifier: string, password: string, redirectPath?: string) => {
       setError(null);
       setIsLoading(true);
       try {
-        const tokenRes = await loginUser({ email, password });
+        const tokenRes = await loginUser({ identifier, password });
         setStoredAccessToken(tokenRes.access_token);
 
         // Fetch user profile
@@ -75,7 +75,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           id: profile.id,
           name: profile.name,
           email: profile.email,
-          username: profile.email,
+          username: profile.username || profile.email,
         });
 
         const target =
