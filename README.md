@@ -238,6 +238,9 @@ copy .env.example .env
    pip install -r requirements.txt
    ```
 
+   > [!NOTE]
+   > On Windows, the `semgrep` dependency is automatically skipped because Semgrep does not currently support native Windows installs. The rest of the backend dependencies still install normally. For SAST scanning on Windows, use WSL or a Linux-based runner instead.
+
    > [!TIP]
    > **Troubleshooting `command not found: uvicorn`**:
    > If you see `zsh: command not found: uvicorn` or `command not found: alembic`, it means your virtual environment is either not activated or `pip install -r requirements.txt` was not run yet. Verify your prompt displays `(.venv)` and run the install command above.
